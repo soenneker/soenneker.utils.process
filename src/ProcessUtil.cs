@@ -62,11 +62,11 @@ public class ProcessUtil : IProcessUtil
 
         if (waitForExit)
         {
-            _logger.LogDebug("Waiting for process to end...");
+            _logger.LogDebug("Waiting for process ({process}) to end...", name);
             await process.WaitForExitAsync();
         }
 
-        _logger.LogDebug("Process {process} has ended", name);
+        _logger.LogDebug("Process ({process}) has ended", name);
     }
 
     public ValueTask StartIfNotRunning(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false)
