@@ -2,12 +2,12 @@
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Soenneker.Utils.Process.Abstract;
 
-namespace Soenneker.Utils.Process.Extensions;
+namespace Soenneker.Utils.Process.Registrars;
 
 public static class ProcessUtilRegistrar
 {
     /// <summary>
-    /// Adds <see cref="IProcessUtil"/> as a scoped service. <para/>
+    /// Adds <see cref="IProcessUtil"/> as a scoped service. (Recommended) <para/>
     /// </summary>
     public static void AddProcessUtilAsScoped(this IServiceCollection services)
     {
