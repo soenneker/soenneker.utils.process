@@ -21,14 +21,13 @@ public class ProcessUtil : IProcessUtil
         _logger = logger;
     }
 
-    public async ValueTask<List<string>> StartProcess(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false)
+    public async ValueTask<List<string>> StartProcess(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true)
     {
-        // TODO: Add log flag
-
-        _logger.LogInformation("Starting process {name} in {directory} with arguments: {arguments} (admin? {admin}) (wait? {waitForExit}) ...", name, directory, arguments, admin, waitForExit);
+        if (log)
+            _logger.LogInformation("Starting process {name} in {directory} with arguments: {arguments} (admin? {admin}) (wait? {waitForExit}) ...", name, directory, arguments, admin, waitForExit);
 
         var processOutput = new List<string>();
-        
+
         string fullPath = Path.Combine(directory, name);
 
         System.Diagnostics.Process process = new()
@@ -45,8 +44,8 @@ public class ProcessUtil : IProcessUtil
             }
         };
 
-        process.ErrorDataReceived += delegate(object _, DataReceivedEventArgs e) { OutputHandler(e, processOutput, true); };
-        process.OutputDataReceived += delegate(object _, DataReceivedEventArgs e) { OutputHandler(e, processOutput, true); };
+        process.ErrorDataReceived += delegate(object _, DataReceivedEventArgs e) { OutputHandler(e, processOutput, log); };
+        process.OutputDataReceived += delegate(object _, DataReceivedEventArgs e) { OutputHandler(e, processOutput, log); };
 
         if (admin)
             process.StartInfo.Verb = "runas";
@@ -62,21 +61,24 @@ public class ProcessUtil : IProcessUtil
 
         if (waitForExit)
         {
-            _logger.LogDebug("Waiting for process ({process}) to end...", name);
+            if (log)
+                _logger.LogDebug("Waiting for process ({process}) to end...", name);
+
             await process.WaitForExitAsync();
         }
 
-        _logger.LogDebug("Process ({process}) has ended", name);
+        if (log)
+            _logger.LogDebug("Process ({process}) has ended", name);
 
         return processOutput;
     }
 
-    public ValueTask<List<string>> StartIfNotRunning(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false)
+    public ValueTask<List<string>> StartIfNotRunning(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true)
     {
         if (IsProcessRunning(name))
             return ValueTask.FromResult(new List<string>());
 
-        return StartProcess(name, directory, arguments, admin, waitForExit);
+        return StartProcess(name, directory, arguments, admin, waitForExit, log);
     }
 
     public void KillProcesses(IEnumerable<string> processNames)
@@ -87,7 +89,7 @@ public class ProcessUtil : IProcessUtil
         }
     }
 
-    private void OutputHandler(DataReceivedEventArgs outLine, List<string> processOutput, bool log = false)
+    private void OutputHandler(DataReceivedEventArgs outLine, List<string> processOutput, bool log = true)
     {
         if (outLine.Data.IsNullOrEmpty())
             return;
