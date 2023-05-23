@@ -10,9 +10,9 @@ namespace Soenneker.Utils.Process.Abstract;
 /// </summary>
 public interface IProcessUtil
 {
-    ValueTask StartProcess(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false);
+    ValueTask<List<string>> StartProcess(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false);
 
-    ValueTask StartIfNotRunning(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false);
+    ValueTask<List<string>> StartIfNotRunning(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false);
 
     void KillProcesses(IEnumerable<string> processNames);
 

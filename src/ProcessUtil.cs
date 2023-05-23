@@ -21,14 +21,14 @@ public class ProcessUtil : IProcessUtil
         _logger = logger;
     }
 
-    public async ValueTask StartProcess(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false)
+    public async ValueTask<List<string>> StartProcess(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false)
     {
         // TODO: Add log flag
 
         _logger.LogInformation("Starting process {name} in {directory} with arguments: {arguments} (admin? {admin}) (wait? {waitForExit}) ...", name, directory, arguments, admin, waitForExit);
 
         var processOutput = new List<string>();
-
+        
         string fullPath = Path.Combine(directory, name);
 
         System.Diagnostics.Process process = new()
@@ -67,12 +67,14 @@ public class ProcessUtil : IProcessUtil
         }
 
         _logger.LogDebug("Process ({process}) has ended", name);
+
+        return processOutput;
     }
 
-    public ValueTask StartIfNotRunning(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false)
+    public ValueTask<List<string>> StartIfNotRunning(string name, string directory, string? arguments = null, bool admin = false, bool waitForExit = false)
     {
         if (IsProcessRunning(name))
-            return ValueTask.CompletedTask;
+            return ValueTask.FromResult(new List<string>());
 
         return StartProcess(name, directory, arguments, admin, waitForExit);
     }
