@@ -39,7 +39,7 @@
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="All" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="7.0.0" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="7.0.1" />
-        <PackageReference Include="Soenneker.Extensions.Enumerable" Version="1.0.38" />
+        <PackageReference Include="Soenneker.Extensions.Enumerable" Version="1.0.39" />
         <PackageReference Include="Soenneker.Extensions.String" Version="1.0.115" />
     </ItemGroup>
 </Project>
