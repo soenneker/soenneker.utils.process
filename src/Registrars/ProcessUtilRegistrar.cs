@@ -4,6 +4,9 @@ using Soenneker.Utils.Process.Abstract;
 
 namespace Soenneker.Utils.Process.Registrars;
 
+/// <summary>
+/// A utility library implementing useful process operations
+/// </summary>
 public static class ProcessUtilRegistrar
 {
     /// <summary>

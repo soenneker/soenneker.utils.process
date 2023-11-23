@@ -37,9 +37,10 @@
         <None Include="..\LICENSE" Pack="true" PackagePath="\" />
         <None Include="..\icon.png" Pack="true" PackagePath="\" />
         
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.0" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
-        <PackageReference Include="Soenneker.Extensions.Enumerable" Version="2.1.13" />
+        <PackageReference Include="Soenneker.Extensions.Enumerable" Version="2.1.14" />
         <PackageReference Include="Soenneker.Extensions.String" Version="2.1.31" />
+        <PackageReference Include="Soenneker.Extensions.Task" Version="2.1.2" />
     </ItemGroup>
 </Project>

@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.Enumerable;
 using Soenneker.Utils.Process.Abstract;
 using Soenneker.Extensions.String;
+using Soenneker.Extensions.Task;
 
 namespace Soenneker.Utils.Process;
 
@@ -64,7 +65,7 @@ public class ProcessUtil : IProcessUtil
             if (log)
                 _logger.LogDebug("Waiting for process ({process}) to end...", name);
 
-            await process.WaitForExitAsync();
+            await process.WaitForExitAsync().NoSync();
         }
 
         if (log)
@@ -149,7 +150,7 @@ public class ProcessUtil : IProcessUtil
     {
         _logger.LogInformation("Checking if {process} is running...", name);
 
-        bool isRunning = System.Diagnostics.Process.GetProcessesByName(name).Any();
+        bool isRunning = System.Diagnostics.Process.GetProcessesByName(name).Length > 0;
 
         if (isRunning)
             _logger.LogInformation("{process} is running", name);
