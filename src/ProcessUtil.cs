@@ -25,7 +25,7 @@ public class ProcessUtil : IProcessUtil
     public async ValueTask<List<string>> StartProcess(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true)
     {
         if (log)
-            _logger.LogInformation("Starting process {name} in {directory} with arguments: {arguments} (admin? {admin}) (wait? {waitForExit}) ...", name, directory, arguments, admin, waitForExit);
+            _logger.LogInformation("Starting process ({name}) in directory ({directory}) with arguments ({arguments}) (admin? {admin}) (wait? {waitForExit}) ...", name, directory, arguments, admin, waitForExit);
 
         var processOutput = new List<string>();
 
