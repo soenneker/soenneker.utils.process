@@ -13,7 +13,7 @@
         <Version Condition="'$(BUILD_VERSION)' != ''">$(BUILD_VERSION)</Version>
         <AssemblyName>Soenneker.Utils.Process</AssemblyName>
         <PackageId>Soenneker.Utils.Process</PackageId>
-        <PackageTags>process utils c# .net dotnet</PackageTags>
+        <PackageTags>process utils c# .net dotnet processutil</PackageTags>
         <Copyright>Copyright © 2023 Jake Soenneker</Copyright>
         <Authors>Jake Soenneker</Authors>
         <Company>https://soenneker.com</Company>
