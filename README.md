@@ -8,5 +8,5 @@
 ## Installation
 
 ```
-Install-Package Soenneker.Utils.Process
+dotnet add package Soenneker.Utils.Process
 ```
