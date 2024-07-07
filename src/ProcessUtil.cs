@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.Enumerable;
@@ -22,7 +23,7 @@ public class ProcessUtil : IProcessUtil
         _logger = logger;
     }
 
-    public async ValueTask<List<string>> StartProcess(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true)
+    public async ValueTask<List<string>> StartProcess(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
             _logger.LogInformation("Starting process ({name}) in directory ({directory}) with arguments ({arguments}) (admin? {admin}) (wait? {waitForExit}) ...", name, directory, arguments, admin, waitForExit);
@@ -63,7 +64,7 @@ public class ProcessUtil : IProcessUtil
             if (log)
                 _logger.LogDebug("Waiting for process ({process}) to end...", name);
 
-            await process.WaitForExitAsync().NoSync();
+            await process.WaitForExitAsync(cancellationToken).NoSync();
         }
 
         if (log)
@@ -72,12 +73,12 @@ public class ProcessUtil : IProcessUtil
         return processOutput;
     }
 
-    public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true)
+    public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default)
     {
         if (IsProcessRunning(name))
             return ValueTask.FromResult(new List<string>());
 
-        return StartProcess(name, directory, arguments, admin, waitForExit, log);
+        return StartProcess(name, directory, arguments, admin, waitForExit, log, cancellationToken);
     }
 
     public void KillProcesses(IEnumerable<string> processNames)
