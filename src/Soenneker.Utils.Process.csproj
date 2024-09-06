@@ -39,7 +39,7 @@
         
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.1" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.1" />
-        <PackageReference Include="Soenneker.Extensions.Enumerable" Version="2.1.123" />
+        <PackageReference Include="Soenneker.Extensions.Enumerable" Version="2.1.124" />
         <PackageReference Include="Soenneker.Extensions.String" Version="2.1.220" />
         <PackageReference Include="Soenneker.Extensions.Task" Version="2.1.62" />
     </ItemGroup>
