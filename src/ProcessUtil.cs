@@ -1,15 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.Enumerable;
 using Soenneker.Utils.Process.Abstract;
-using Soenneker.Extensions.String;
 using Soenneker.Extensions.Task;
+using System.Collections.Concurrent;
 
 namespace Soenneker.Utils.Process;
 
@@ -23,84 +22,183 @@ public class ProcessUtil : IProcessUtil
         _logger = logger;
     }
 
-    public async ValueTask<List<string>> StartProcess(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default)
+    public async ValueTask<List<string>> Start(
+        string name,
+        string? directory = null,
+        string? arguments = null,
+        bool admin = false,
+        bool waitForExit = true,
+        bool log = true,
+        CancellationToken cancellationToken = default)
     {
-        if (log)
-            _logger.LogInformation("Starting process ({name}) in directory ({directory}) with arguments ({arguments}) (admin? {admin}) (wait? {waitForExit}) ...", name, directory, arguments, admin, waitForExit);
+        // Use ConcurrentQueue to store output lines in a thread-safe manner while preserving order
+        var outputLines = new ConcurrentQueue<string>();
 
-        var processOutput = new List<string>();
-
-        string fullPath = directory != null ? Path.Combine(directory, name) : name;
-
-        var startInfo = new ProcessStartInfo(fullPath)
+        var startInfo = new ProcessStartInfo
         {
-            Arguments = arguments,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
+            FileName = name,
+            Arguments = arguments ?? string.Empty,
+            RedirectStandardOutput = true, // Always redirect to capture output
+            RedirectStandardError = true, // Always redirect to capture error
+            UseShellExecute = false, // Must be false to redirect streams
+            CreateNoWindow = true, // Do not create a window
         };
 
-        if (arguments != null)
-            startInfo.Arguments = arguments;
-
-        if (directory != null)
-            startInfo.WorkingDirectory = directory;
-
-        if (admin)
-            startInfo.Verb = "runas";
-
-        var process = new System.Diagnostics.Process {StartInfo = startInfo};
-
-        process.ErrorDataReceived += delegate(object _, DataReceivedEventArgs e) { OutputHandler(e, processOutput, log); };
-        process.OutputDataReceived += delegate(object _, DataReceivedEventArgs e) { OutputHandler(e, processOutput, log); };
-
-        process.Start();
-
-        process.BeginErrorReadLine();
-        process.BeginOutputReadLine();
-
-        if (waitForExit)
+        if (!string.IsNullOrEmpty(directory))
         {
-            if (log)
-                _logger.LogDebug("Waiting for process ({process}) to end...", name);
-
-            await process.WaitForExitAsync(cancellationToken).NoSync();
+            startInfo.WorkingDirectory = directory;
         }
 
-        if (log)
-            _logger.LogDebug("Process ({process}) has ended", name);
+        if (admin)
+        {
+            startInfo.Verb = "runas";
+        }
 
-        return processOutput;
+        using var process = new System.Diagnostics.Process();
+        process.StartInfo = startInfo;
+        process.EnableRaisingEvents = true;
+
+        // Assign named event handlers
+
+        DataReceivedEventHandler outputHandler = (sender, e) =>
+        {
+            if (e.Data != null)
+            {
+                outputLines.Enqueue(e.Data);
+
+                if (log)
+                    _logger.LogInformation(e.Data);
+            }
+        };
+
+        DataReceivedEventHandler errorHandler = (sender, e) =>
+        {
+            if (e.Data != null)
+            {
+                var errorLine = $"ERROR: {e.Data}";
+                outputLines.Enqueue(errorLine);
+
+                if (log)
+                    _logger.LogError(e.Data);
+            }
+        };
+
+        process.OutputDataReceived += outputHandler;
+        process.ErrorDataReceived += errorHandler;
+
+        try
+        {
+            if (!process.Start())
+            {
+                throw new InvalidOperationException($"Failed to start process '{name}'.");
+            }
+
+            // Begin asynchronous reading of the output streams
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            if (waitForExit)
+            {
+                // Register cancellation
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                Task waitTask = process.WaitForExitAsync(linkedCts.Token);
+
+                // Handle cancellation
+                Task completedTask = await Task.WhenAny(waitTask, Task.Delay(Timeout.Infinite, cancellationToken)).NoSync();
+
+                if (completedTask == waitTask)
+                {
+                    // Process exited
+                    await waitTask.NoSync(); // Ensure any exceptions/cancellations are observed
+                }
+                else
+                {
+                    // Cancellation requested
+                    try
+                    {
+                        await linkedCts.CancelAsync().NoSync();
+                        // Optionally, kill the process if cancellation is requested
+                        if (!process.HasExited)
+                        {
+                            process.Kill(entireProcessTree: true);
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore exceptions from killing the process
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                // After process exits, check exit code
+                if (process.ExitCode != 0)
+                {
+                    throw new InvalidOperationException($"Process '{name}' exited with code {process.ExitCode}.");
+                }
+            }
+
+            return new List<string>(outputLines);
+        }
+        catch (OperationCanceledException)
+        {
+            // Handle cancellation
+            _logger.LogWarning("Process execution was canceled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Log and rethrow exceptions
+            _logger.LogError(ex, "An error occurred while starting the process '{name}'.", name);
+            throw new InvalidOperationException($"An error occurred while starting the process '{name}'.", ex);
+        }
+        finally
+        {
+            // Unhook event handlers to prevent memory leaks and unintended behavior
+            process.OutputDataReceived -= outputHandler;
+            process.ErrorDataReceived -= errorHandler;
+
+            // Ensure that asynchronous event handling is stopped
+            try
+            {
+                process.CancelOutputRead();
+            }
+            catch (InvalidOperationException)
+            {
+                // No async read operation is in progress on the stream.
+                // Ignore the exception.
+            }
+
+            try
+            {
+                process.CancelErrorRead();
+            }
+            catch (InvalidOperationException)
+            {
+                // No async read operation is in progress on the stream.
+                // Ignore the exception.
+            }
+        }
     }
 
-    public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default)
+    public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true,
+        CancellationToken cancellationToken = default)
     {
-        if (IsProcessRunning(name))
+        if (IsRunning(name))
             return ValueTask.FromResult(new List<string>());
 
-        return StartProcess(name, directory, arguments, admin, waitForExit, log, cancellationToken);
+        return Start(name, directory, arguments, admin, waitForExit, log, cancellationToken);
     }
 
-    public void KillProcesses(IEnumerable<string> processNames)
+    public void KillByNames(IEnumerable<string> processNames)
     {
         foreach (string names in processNames)
         {
-            KillProcessesByName(names);
+            Kill(names);
         }
     }
 
-    private void OutputHandler(DataReceivedEventArgs outLine, List<string> processOutput, bool log = true)
-    {
-        if (outLine.Data.IsNullOrEmpty())
-            return;
-
-        processOutput.Add(outLine.Data);
-
-        if (log)
-            _logger.LogDebug("{output}", outLine.Data);
-    }
-
-    public void KillProcessesByName(string name)
+    public void Kill(string name)
     {
         System.Diagnostics.Process[] processes = System.Diagnostics.Process.GetProcessesByName(name);
 
@@ -114,12 +212,12 @@ public class ProcessUtil : IProcessUtil
 
         foreach (System.Diagnostics.Process process in processes)
         {
-            KillProcess(process);
+            Kill(process);
             break;
         }
     }
 
-    public void KillProcessesThatStartsWith(string startsWith)
+    public void KillThatStartWith(string startsWith)
     {
         System.Diagnostics.Process[] totalProcesses = System.Diagnostics.Process.GetProcesses();
 
@@ -135,17 +233,17 @@ public class ProcessUtil : IProcessUtil
 
         foreach (System.Diagnostics.Process process in processesToKill)
         {
-            KillProcess(process);
+            Kill(process);
         }
     }
 
-    public void KillProcess(System.Diagnostics.Process process)
+    public void Kill(System.Diagnostics.Process process)
     {
         _logger.LogInformation("Killing process {processName} (id {id}) ...", process.ProcessName, process.Id);
         process.Kill(false);
     }
 
-    public bool IsProcessRunning(string name)
+    public bool IsRunning(string name)
     {
         _logger.LogInformation("Checking if {process} is running...", name);
 

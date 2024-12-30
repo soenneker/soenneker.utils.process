@@ -11,18 +11,18 @@ namespace Soenneker.Utils.Process.Abstract;
 /// </summary>
 public interface IProcessUtil
 {
-    ValueTask<List<string>> StartProcess(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default);
+    ValueTask<List<string>> Start(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default);
 
     ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default);
 
-    void KillProcesses(IEnumerable<string> processNames);
+    void KillByNames(IEnumerable<string> processNames);
 
-    void KillProcessesByName(string name);
+    void Kill(string name);
 
-    void KillProcessesThatStartsWith(string startsWith);
+    void KillThatStartWith(string startsWith);
 
-    void KillProcess(System.Diagnostics.Process process);
+    void Kill(System.Diagnostics.Process process);
 
     [Pure]
-    bool IsProcessRunning(string name);
+    bool IsRunning(string name);
 }
