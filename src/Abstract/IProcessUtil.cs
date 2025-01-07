@@ -11,7 +11,7 @@ namespace Soenneker.Utils.Process.Abstract;
 /// </summary>
 public interface IProcessUtil
 {
-    ValueTask<List<string>> Start(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default);
+    ValueTask<List<string>> Start(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = true, bool log = true, CancellationToken cancellationToken = default);
 
     ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default);
 
