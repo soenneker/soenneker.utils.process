@@ -44,7 +44,7 @@ public class ProcessUtil : IProcessUtil
             CreateNoWindow = true, // Do not create a window
         };
 
-        if (!string.IsNullOrEmpty(directory))
+        if (!directory.IsNullOrEmpty())
         {
             startInfo.WorkingDirectory = directory;
         }
