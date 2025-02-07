@@ -22,13 +22,7 @@ public class ProcessUtil : IProcessUtil
         _logger = logger;
     }
 
-    public async ValueTask<List<string>> Start(
-        string name,
-        string? directory = null,
-        string? arguments = null,
-        bool admin = false,
-        bool waitForExit = true,
-        bool log = true,
+    public async ValueTask<List<string>> Start(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = true, bool log = true,
         CancellationToken cancellationToken = default)
     {
         // Use ConcurrentQueue to store output lines in a thread-safe manner while preserving order
@@ -67,7 +61,7 @@ public class ProcessUtil : IProcessUtil
                 outputLines.Enqueue(e.Data);
 
                 if (log)
-                    _logger.LogInformation(e.Data);
+                    _logger.LogInformation("{data}", e.Data);
             }
         };
 
@@ -79,7 +73,7 @@ public class ProcessUtil : IProcessUtil
                 outputLines.Enqueue(errorLine);
 
                 if (log)
-                    _logger.LogError(e.Data);
+                    _logger.LogError("{data}", e.Data);
             }
         };
 
@@ -104,7 +98,8 @@ public class ProcessUtil : IProcessUtil
                 Task waitTask = process.WaitForExitAsync(linkedCts.Token);
 
                 // Handle cancellation
-                Task completedTask = await Task.WhenAny(waitTask, Task.Delay(Timeout.Infinite, cancellationToken)).NoSync();
+                Task completedTask = await Task.WhenAny(waitTask, Task.Delay(Timeout.Infinite, cancellationToken))
+                                               .NoSync();
 
                 if (completedTask == waitTask)
                 {
@@ -116,7 +111,8 @@ public class ProcessUtil : IProcessUtil
                     // Cancellation requested
                     try
                     {
-                        await linkedCts.CancelAsync().NoSync();
+                        await linkedCts.CancelAsync()
+                                       .NoSync();
                         // Optionally, kill the process if cancellation is requested
                         if (!process.HasExited)
                         {
@@ -138,7 +134,7 @@ public class ProcessUtil : IProcessUtil
                 }
             }
 
-            return new List<string>(outputLines);
+            return [..outputLines];
         }
         catch (OperationCanceledException)
         {
@@ -221,7 +217,8 @@ public class ProcessUtil : IProcessUtil
     {
         System.Diagnostics.Process[] totalProcesses = System.Diagnostics.Process.GetProcesses();
 
-        List<System.Diagnostics.Process> processesToKill = totalProcesses.Where(process => process.ProcessName.StartsWith(startsWith, StringComparison.OrdinalIgnoreCase)).ToList();
+        List<System.Diagnostics.Process> processesToKill = totalProcesses.Where(process => process.ProcessName.StartsWith(startsWith, StringComparison.OrdinalIgnoreCase))
+                                                                         .ToList();
 
         if (processesToKill.Empty())
         {
@@ -247,7 +244,8 @@ public class ProcessUtil : IProcessUtil
     {
         _logger.LogInformation("Checking if {process} is running...", name);
 
-        bool isRunning = System.Diagnostics.Process.GetProcessesByName(name).Length > 0;
+        bool isRunning = System.Diagnostics.Process.GetProcessesByName(name)
+                               .Length > 0;
 
         if (isRunning)
             _logger.LogInformation("{process} is running", name);
