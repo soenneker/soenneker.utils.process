@@ -19,7 +19,7 @@ public sealed class ProcessUtil : IProcessUtil
     }
 
     public async ValueTask<List<string>> Start(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = true,
-        bool log = true, CancellationToken cancellationToken = default)
+        TimeSpan? timeout = null, bool log = true, CancellationToken cancellationToken = default)
     {
         var outputLines = new List<string>(128);
         var sync = new object();
@@ -87,27 +87,53 @@ public sealed class ProcessUtil : IProcessUtil
             {
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 Task waitTask = process.WaitForExitAsync(linkedCts.Token);
-                Task completedTask = await Task.WhenAny(waitTask, Task.Delay(Timeout.Infinite, cancellationToken)).NoSync();
 
-                if (completedTask != waitTask)
+                // choose a delay task based on timeout (infinite if null)
+                Task delayTask = timeout.HasValue ? Task.Delay(timeout.Value, cancellationToken) : Task.Delay(Timeout.Infinite, cancellationToken);
+
+                Task completed = await Task.WhenAny(waitTask, delayTask).NoSync();
+
+                if (completed == waitTask)
                 {
-                    try
-                    {
-                        await linkedCts.CancelAsync().NoSync();
-                        if (!process.HasExited)
-                            process.Kill(entireProcessTree: true);
-                    }
-                    catch
-                    {
-                    }
+                    // process exited before timeout/cancellation
+                    await waitTask.NoSync();
 
-                    cancellationToken.ThrowIfCancellationRequested();
+                    if (process.ExitCode != 0)
+                        throw new InvalidOperationException($"Process '{name}' exited with code {process.ExitCode}.");
                 }
+                else
+                {
+                    // delayTask finished: either timeout or cancellation
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        // caller canceled
+                        try
+                        {
+                            linkedCts.Cancel();
+                            if (!process.HasExited)
+                                process.Kill(entireProcessTree: true);
+                        }
+                        catch
+                        {
+                        }
 
-                await waitTask.NoSync();
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
+                    else
+                    {
+                        // timeout expired
+                        try
+                        {
+                            if (!process.HasExited)
+                                process.Kill(entireProcessTree: true);
+                        }
+                        catch
+                        {
+                        }
 
-                if (process.ExitCode != 0)
-                    throw new InvalidOperationException($"Process '{name}' exited with code {process.ExitCode}.");
+                        throw new TimeoutException($"Process '{name}' did not exit within {timeout.Value.TotalMilliseconds} ms.");
+                    }
+                }
             }
 
             lock (sync)
@@ -149,9 +175,9 @@ public sealed class ProcessUtil : IProcessUtil
     }
 
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,
-        bool waitForExit = false, bool log = true, CancellationToken cancellationToken = default)
+        bool waitForExit = false, TimeSpan? timeout = null, bool log = true, CancellationToken cancellationToken = default)
     {
-        return IsRunning(name) ? ValueTask.FromResult(new List<string>(0)) : Start(name, directory, arguments, admin, waitForExit, log, cancellationToken);
+        return IsRunning(name) ? ValueTask.FromResult(new List<string>(0)) : Start(name, directory, arguments, admin, waitForExit, timeout, log, cancellationToken);
     }
 
     public void KillByNames(IEnumerable<string> processNames)
