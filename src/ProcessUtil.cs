@@ -293,4 +293,11 @@ public sealed class ProcessUtil : IProcessUtil
         if (proc.ExitCode != 0)
             throw new Exception($"BashRun failed with exit code {proc.ExitCode}: {cmd} {args}");
     }
+
+    public ValueTask ShellRun(string snippet, string workingDirectory, CancellationToken cancellationToken = default)
+    {
+        // Always wrap in single-quotes; if snippet needs single-quotes itself, callers can escape or use a different overload.
+        var arg = $"-lc '{snippet}'";
+        return BashRun("bash", arg, workingDirectory, cancellationToken);
+    }
 }
