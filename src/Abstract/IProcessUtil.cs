@@ -78,25 +78,27 @@ public interface IProcessUtil
     /// Attempts to kill all processes whose names exactly match any of the given names.
     /// </summary>
     /// <param name="processNames">A collection of process names (without extension) to terminate.</param>
-    void KillByNames(IEnumerable<string> processNames);
+    ValueTask KillByNames(IEnumerable<string> processNames, bool waitForExit = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kills the first process found whose name exactly matches <paramref name="name"/>.
     /// </summary>
     /// <param name="name">The process name (without extension) to kill.</param>
-    void Kill(string name);
+    Task Kill(string name, bool waitForExit = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kills all running processes whose process name (without extension) starts with the specified prefix.
     /// </summary>
     /// <param name="startsWith">The prefix to match against running process names.</param>
-    void KillThatStartWith(string startsWith);
+    ValueTask KillThatStartWith(string startsWith, bool waitForExit = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Kills the specified <see cref="System.Diagnostics.Process"/> instance.
     /// </summary>
     /// <param name="process">The process instance to terminate.</param>
-    void Kill(System.Diagnostics.Process process);
+    /// <param name="waitForExit"></param>
+    /// <param name="cancellationToken"></param>
+    Task Kill(System.Diagnostics.Process process, bool waitForExit = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Checks whether any running process exists with the specified name (without extension).
@@ -105,4 +107,18 @@ public interface IProcessUtil
     /// <returns>True if one or more processes with that name are running; otherwise, false.</returns>
     [Pure]
     bool IsRunning(string name);
+
+    /// <summary>
+    /// Executes a command using the Bash shell with the specified arguments in the given working directory.
+    /// </summary>
+    /// <param name="cmd">The shell command to run (e.g., <c>make</c>, <c>git</c>, etc.).</param>
+    /// <param name="args">The arguments to pass to the command. These will be passed through Bash with <c>-c</c>.</param>
+    /// <param name="workingDir">The directory in which to execute the command.</param>
+    /// <param name="cancellationToken">Optional token to cancel the command execution.</param>
+    /// <returns>A <see cref="ValueTask"/> representing the asynchronous operation.</returns>
+    /// <exception cref="Exception">Thrown if the command exits with a non-zero status code.</exception>
+    /// <remarks>
+    /// This method uses <c>/bin/bash -c</c> to execute the full command, allowing for Bash-specific syntax like pipes, globs, and redirection.
+    /// </remarks>
+    ValueTask BashRun(string cmd, string args, string workingDir, CancellationToken cancellationToken = default);
 }

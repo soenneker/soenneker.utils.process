@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 namespace Soenneker.Utils.Process.Tests;
 
 [Collection("Collection")]
-public class ProcessUtilTests : FixturedUnitTest
+public sealed class ProcessUtilTests : FixturedUnitTest
 {
     private readonly IProcessUtil _util;
 
@@ -27,11 +27,7 @@ public class ProcessUtilTests : FixturedUnitTest
         string arguments = GetEchoArguments("Hello, World!");
 
         // Act
-        List<string> output = await _util.Start(
-            name: command,
-            arguments: arguments,
-            waitForExit: true,
-            log: false);
+        List<string> output = await _util.Start(name: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: CancellationToken);
 
         // Assert
         Assert.Contains("Hello, World!", output);
@@ -45,11 +41,7 @@ public class ProcessUtilTests : FixturedUnitTest
         string arguments = GetSleepArguments(5); // Sleep for 5 seconds
 
         // Act
-        List<string> output = await _util.Start(
-            name: command,
-            arguments: arguments,
-            waitForExit: false,
-            log: false);
+        List<string> output = await _util.Start(name: command, arguments: arguments, waitForExit: false, log: false, cancellationToken: CancellationToken);
 
         // Assert
         // Since we are not waiting for exit, output should be empty
@@ -95,12 +87,7 @@ public class ProcessUtilTests : FixturedUnitTest
         // Act & Assert
         var exception = await Assert.ThrowsAsync<OperationCanceledException>(async () =>
         {
-            await _util.Start(
-                name: command,
-                arguments: arguments,
-                waitForExit: true,
-                log: false,
-                cancellationToken: cts.Token);
+            await _util.Start(name: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: cts.Token);
         });
 
         Assert.IsType<OperationCanceledException>(exception);
@@ -114,17 +101,11 @@ public class ProcessUtilTests : FixturedUnitTest
         string arguments = GetEchoArguments("Test Argument");
 
         // Act
-        List<string> output = await _util.Start(
-            name: command,
-            arguments: arguments,
-            waitForExit: true,
-            log: false);
+        List<string> output = await _util.Start(name: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: CancellationToken);
 
         // Assert
         Assert.Contains("Test Argument", output);
     }
-
-    #region Helper Methods
 
     private string GetEchoCommand()
     {
@@ -141,7 +122,4 @@ public class ProcessUtilTests : FixturedUnitTest
         else
             return message;
     }
-
-    #endregion
 }
-

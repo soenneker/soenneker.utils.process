@@ -4,11 +4,13 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Soenneker.Extensions.String;
 using Soenneker.Extensions.Task;
 using Soenneker.Utils.Process.Abstract;
 
 namespace Soenneker.Utils.Process;
 
+///<inheritdoc cref="IProcessUtil"/>
 public sealed class ProcessUtil : IProcessUtil
 {
     private readonly ILogger<ProcessUtil> _logger;
@@ -34,7 +36,7 @@ public sealed class ProcessUtil : IProcessUtil
             CreateNoWindow = true
         };
 
-        if (!string.IsNullOrEmpty(directory))
+        if (directory.HasContent())
             startInfo.WorkingDirectory = directory;
 
         if (admin)
@@ -109,7 +111,8 @@ public sealed class ProcessUtil : IProcessUtil
                         // caller canceled
                         try
                         {
-                            linkedCts.Cancel();
+                            await linkedCts.CancelAsync().NoSync();
+
                             if (!process.HasExited)
                                 process.Kill(entireProcessTree: true);
                         }
@@ -177,30 +180,34 @@ public sealed class ProcessUtil : IProcessUtil
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,
         bool waitForExit = false, TimeSpan? timeout = null, bool log = true, CancellationToken cancellationToken = default)
     {
-        return IsRunning(name) ? ValueTask.FromResult(new List<string>(0)) : Start(name, directory, arguments, admin, waitForExit, timeout, log, cancellationToken);
+        return IsRunning(name)
+            ? ValueTask.FromResult(new List<string>(0))
+            : Start(name, directory, arguments, admin, waitForExit, timeout, log, cancellationToken);
     }
 
-    public void KillByNames(IEnumerable<string> processNames)
+    public async ValueTask KillByNames(IEnumerable<string> processNames, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         foreach (string name in processNames)
-            Kill(name);
+        {
+            await Kill(name, cancellationToken: cancellationToken).NoSync();
+        }
     }
 
-    public void Kill(string name)
+    public Task Kill(string name, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         System.Diagnostics.Process[] processes = System.Diagnostics.Process.GetProcessesByName(name);
 
         if (processes.Length == 0)
         {
             _logger.LogDebug("No processes found with name '{Name}'", name);
-            return;
+            return Task.CompletedTask;
         }
 
         _logger.LogDebug("Killing first of {Count} process(es) named '{Name}'", processes.Length, name);
-        Kill(processes[0]);
+        return Kill(processes[0], waitForExit, cancellationToken);
     }
 
-    public void KillThatStartWith(string prefix)
+    public async ValueTask KillThatStartWith(string prefix, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         System.Diagnostics.Process[] total = System.Diagnostics.Process.GetProcesses();
         var killed = 0;
@@ -209,7 +216,7 @@ public sealed class ProcessUtil : IProcessUtil
         {
             if (process.ProcessName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
-                Kill(process);
+                await Kill(process, cancellationToken: cancellationToken).NoSync();
                 killed++;
             }
         }
@@ -224,10 +231,18 @@ public sealed class ProcessUtil : IProcessUtil
         }
     }
 
-    public void Kill(System.Diagnostics.Process process)
+    public Task Kill(System.Diagnostics.Process process, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Killing process '{Name}' (PID {Id})", process.ProcessName, process.Id);
+        _logger.LogInformation("Killing process '{Name}' (PID {Id})...", process.ProcessName, process.Id);
         process.Kill(entireProcessTree: false);
+
+        if (waitForExit)
+        {
+            _logger.LogDebug("Waiting for process '{Name}' (PID {Id}) to exit...", process.ProcessName, process.Id);
+            return process.WaitForExitAsync(cancellationToken);
+        }
+
+        return Task.CompletedTask;
     }
 
     public bool IsRunning(string name)
@@ -240,5 +255,42 @@ public sealed class ProcessUtil : IProcessUtil
         }
 
         return running;
+    }
+
+    public async ValueTask BashRun(string cmd, string args, string workingDir, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("🟢 Running command: {cmd} {args} (in {cwd})", cmd, args, workingDir);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "/bin/bash",
+            Arguments = $"-c \"{cmd} {args}\"",
+            WorkingDirectory = workingDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(psi)!;
+
+        proc.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data != null)
+                _logger.LogInformation("[stdout] {line}", e.Data);
+        };
+
+        proc.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data != null)
+                _logger.LogWarning("[stderr] {line}", e.Data);
+        };
+
+        proc.BeginOutputReadLine();
+        proc.BeginErrorReadLine();
+
+        await proc.WaitForExitAsync(cancellationToken).NoSync();
+
+        if (proc.ExitCode != 0)
+            throw new Exception($"BashRun failed with exit code {proc.ExitCode}: {cmd} {args}");
     }
 }
