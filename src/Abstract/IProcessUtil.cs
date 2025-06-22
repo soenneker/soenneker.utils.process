@@ -121,21 +121,4 @@ public interface IProcessUtil
     /// This method uses <c>/bin/bash -c</c> to execute the full command, allowing for Bash-specific syntax like pipes, globs, and redirection.
     /// </remarks>
     ValueTask BashRun(string cmd, string args, string workingDir, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Executes a shell snippet using <c>bash -lc</c>, wrapping and quoting the command for you.
-    /// </summary>
-    /// <param name="snippet">
-    /// The shell commands to execute (omit the outer <c>bash -lc</c> quoting).
-    /// </param>
-    /// <param name="workingDirectory">
-    /// The directory in which to run the shell snippet.
-    /// </param>
-    /// <param name="cancellationToken">
-    /// A token that can be used to cancel the operation.
-    /// </param>
-    /// <returns>
-    /// A <see cref="ValueTask"/> that completes when the shell snippet has finished executing.
-    /// </returns>
-    ValueTask ShellRun(string snippet, string workingDirectory, CancellationToken cancellationToken = default);
 }

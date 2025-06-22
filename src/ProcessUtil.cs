@@ -259,12 +259,12 @@ public sealed class ProcessUtil : IProcessUtil
 
     public async ValueTask BashRun(string cmd, string args, string workingDir, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("🟢 Running command: {cmd} {args} (in {cwd})", cmd, args, workingDir);
+        _logger.LogInformation("🟢 Running command: {command} (in {cwd})", cmd, workingDir);
 
         var psi = new ProcessStartInfo
         {
-            FileName = cmd,
-            Arguments = args,
+            FileName = "/bin/bash",
+            Arguments = $"-lc \"{cmd.Replace("\"", "\\\"")}\"",
             WorkingDirectory = workingDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -291,13 +291,6 @@ public sealed class ProcessUtil : IProcessUtil
         await proc.WaitForExitAsync(cancellationToken).NoSync();
 
         if (proc.ExitCode != 0)
-            throw new Exception($"BashRun failed with exit code {proc.ExitCode}: {cmd} {args}");
-    }
-
-    public ValueTask ShellRun(string snippet, string workingDirectory, CancellationToken cancellationToken = default)
-    {
-        // Always wrap in single-quotes; if snippet needs single-quotes itself, callers can escape or use a different overload.
-        var arg = $"-lc '{snippet}'";
-        return BashRun("bash", arg, workingDirectory, cancellationToken);
+            throw new Exception($"Run failed with exit code {proc.ExitCode} for command: {cmd}");
     }
 }
