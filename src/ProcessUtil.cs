@@ -263,8 +263,8 @@ public sealed class ProcessUtil : IProcessUtil
 
         var psi = new ProcessStartInfo
         {
-            FileName = "/bin/bash",
-            Arguments = $"-c \"{cmd} {args}\"",
+            FileName = cmd,
+            Arguments = args,
             WorkingDirectory = workingDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
