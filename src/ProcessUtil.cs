@@ -273,25 +273,50 @@ public sealed class ProcessUtil : IProcessUtil
 
         using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(psi)!;
 
-        proc.OutputDataReceived += (_, e) =>
+        DataReceivedEventHandler outHandler = (_, e) =>
         {
             if (e.Data != null)
                 _logger.LogInformation("[stdout] {line}", e.Data);
         };
-
-        proc.ErrorDataReceived += (_, e) =>
+        DataReceivedEventHandler errHandler = (_, e) =>
         {
             if (e.Data != null)
                 _logger.LogWarning("[stderr] {line}", e.Data);
         };
 
-        proc.BeginOutputReadLine();
-        proc.BeginErrorReadLine();
+        proc.OutputDataReceived += outHandler;
+        proc.ErrorDataReceived += errHandler;
 
-        await proc.WaitForExitAsync(cancellationToken).NoSync();
+        try
+        {
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
 
-        if (proc.ExitCode != 0)
-            throw new Exception($"Run failed with exit code {proc.ExitCode} for command: {cmd}");
+            await proc.WaitForExitAsync(cancellationToken).NoSync();
+
+            if (proc.ExitCode != 0)
+                throw new Exception($"Run failed with exit code {proc.ExitCode} for command: {cmd}");
+        }
+        finally
+        {
+            proc.OutputDataReceived -= outHandler;
+            proc.ErrorDataReceived -= errHandler;
+            try
+            {
+                proc.CancelOutputRead();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            try
+            {
+                proc.CancelErrorRead();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
     }
 
 
@@ -314,26 +339,61 @@ public sealed class ProcessUtil : IProcessUtil
         var outputLines = new List<string>(128);
         object sync = new();
 
-        proc.OutputDataReceived += (_, e) =>
+        DataReceivedEventHandler outHandler = (_, e) =>
         {
             if (e.Data == null) return;
-            lock (sync) { outputLines.Add(e.Data); }
+            lock (sync)
+            {
+                outputLines.Add(e.Data);
+            }
+
             _logger.LogInformation("{Line}", e.Data);
         };
-        proc.ErrorDataReceived += (_, e) =>
+        DataReceivedEventHandler errHandler = (_, e) =>
         {
             if (e.Data == null) return;
             var err = $"ERROR: {e.Data}";
-            lock (sync) { outputLines.Add(err); }
+            lock (sync)
+            {
+                outputLines.Add(err);
+            }
+
             _logger.LogError("{Line}", e.Data);
         };
 
-        proc.BeginOutputReadLine();
-        proc.BeginErrorReadLine();
+        proc.OutputDataReceived += outHandler;
+        proc.ErrorDataReceived += errHandler;
 
-        await proc.WaitForExitAsync(cancellationToken).NoSync();
+        try
+        {
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
 
-        if (proc.ExitCode != 0)
-            throw new InvalidOperationException($"CMD '{command}' exited with code {proc.ExitCode}.");
+            await proc.WaitForExitAsync(cancellationToken).NoSync();
+
+            if (proc.ExitCode != 0)
+                throw new InvalidOperationException($"CMD '{command}' exited with code {proc.ExitCode}.");
+        }
+        finally
+        {
+            // unsubscribe and cancel reading
+            proc.OutputDataReceived -= outHandler;
+            proc.ErrorDataReceived -= errHandler;
+            try
+            {
+                proc.CancelOutputRead();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            try
+            {
+                proc.CancelErrorRead();
+            }
+            catch (InvalidOperationException)
+            {
+            }
+        }
     }
 }
