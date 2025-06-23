@@ -293,4 +293,47 @@ public sealed class ProcessUtil : IProcessUtil
         if (proc.ExitCode != 0)
             throw new Exception($"Run failed with exit code {proc.ExitCode} for command: {cmd}");
     }
+
+
+    public async ValueTask CmdRun(string command, string workingDirectory, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("🔧 Running CMD command: {Command} (in {Cwd})", command, workingDirectory);
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "cmd.exe",
+            Arguments = $"/c {command}",
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(psi)!;
+        var outputLines = new List<string>(128);
+        object sync = new();
+
+        proc.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data == null) return;
+            lock (sync) { outputLines.Add(e.Data); }
+            _logger.LogInformation("{Line}", e.Data);
+        };
+        proc.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data == null) return;
+            var err = $"ERROR: {e.Data}";
+            lock (sync) { outputLines.Add(err); }
+            _logger.LogError("{Line}", e.Data);
+        };
+
+        proc.BeginOutputReadLine();
+        proc.BeginErrorReadLine();
+
+        await proc.WaitForExitAsync(cancellationToken).NoSync();
+
+        if (proc.ExitCode != 0)
+            throw new InvalidOperationException($"CMD '{command}' exited with code {proc.ExitCode}.");
+    }
 }

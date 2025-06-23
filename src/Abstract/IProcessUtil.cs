@@ -121,4 +121,6 @@ public interface IProcessUtil
     /// This method uses <c>/bin/bash -c</c> to execute the full command, allowing for Bash-specific syntax like pipes, globs, and redirection.
     /// </remarks>
     ValueTask BashRun(string cmd, string args, string workingDir, CancellationToken cancellationToken = default);
+
+    ValueTask CmdRun(string command, string workingDirectory, CancellationToken cancellationToken = default);
 }
