@@ -21,7 +21,7 @@ public sealed class ProcessUtil : IProcessUtil
     }
 
     public async ValueTask<List<string>> Start(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = true,
-        TimeSpan? timeout = null, bool log = true, CancellationToken cancellationToken = default)
+        TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
     {
         var outputLines = new List<string>(128);
         var sync = new object();
@@ -35,6 +35,12 @@ public sealed class ProcessUtil : IProcessUtil
             UseShellExecute = false,
             CreateNoWindow = true
         };
+
+        if (environmentalVars is {Count: > 0})
+        {
+            foreach ((string k, string v) in environmentalVars)
+                startInfo.Environment[k] = v; // .Environment works on every OS
+        }
 
         if (directory.HasContent())
             startInfo.WorkingDirectory = directory;
@@ -178,11 +184,11 @@ public sealed class ProcessUtil : IProcessUtil
     }
 
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,
-        bool waitForExit = false, TimeSpan? timeout = null, bool log = true, CancellationToken cancellationToken = default)
+        bool waitForExit = false, TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
     {
         return IsRunning(name)
             ? ValueTask.FromResult(new List<string>(0))
-            : Start(name, directory, arguments, admin, waitForExit, timeout, log, cancellationToken);
+            : Start(name, directory, arguments, admin, waitForExit, timeout, log, environmentalVars, cancellationToken);
     }
 
     public async ValueTask KillByNames(IEnumerable<string> processNames, bool waitForExit = false, CancellationToken cancellationToken = default)
@@ -257,11 +263,11 @@ public sealed class ProcessUtil : IProcessUtil
         return running;
     }
 
-    public async ValueTask BashRun(string cmd, string args, string workingDir, CancellationToken cancellationToken = default)
+    public async ValueTask BashRun(string cmd, string workingDir, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("🟢 Running command: {command} (in {cwd})", cmd, workingDir);
 
-        var psi = new ProcessStartInfo
+        var startInfo = new ProcessStartInfo
         {
             FileName = "/bin/bash",
             Arguments = $"-lc \"{cmd.Replace("\"", "\\\"")}\"",
@@ -271,7 +277,13 @@ public sealed class ProcessUtil : IProcessUtil
             UseShellExecute = false,
         };
 
-        using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(psi)!;
+        if (environmentalVars is { Count: > 0 })
+        {
+            foreach ((string k, string v) in environmentalVars)
+                startInfo.Environment[k] = v; // .Environment works on every OS
+        }
+
+        using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(startInfo)!;
 
         DataReceivedEventHandler outHandler = (_, e) =>
         {
@@ -320,11 +332,11 @@ public sealed class ProcessUtil : IProcessUtil
     }
 
 
-    public async ValueTask CmdRun(string command, string workingDirectory, CancellationToken cancellationToken = default)
+    public async ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("🔧 Running CMD command: {Command} (in {Cwd})", command, workingDirectory);
 
-        var psi = new ProcessStartInfo
+        var startInfo = new ProcessStartInfo
         {
             FileName = "cmd.exe",
             Arguments = $"/c {command}",
@@ -335,7 +347,13 @@ public sealed class ProcessUtil : IProcessUtil
             CreateNoWindow = true
         };
 
-        using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(psi)!;
+        if (environmentalVars is { Count: > 0 })
+        {
+            foreach ((string k, string v) in environmentalVars)
+                startInfo.Environment[k] = v; // .Environment works on every OS
+        }
+
+        using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(startInfo)!;
         var outputLines = new List<string>(128);
         object sync = new();
 
