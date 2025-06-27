@@ -152,12 +152,16 @@ public sealed class ProcessUtil : IProcessUtil
         }
         catch (OperationCanceledException)
         {
-            _logger.LogWarning("Process '{Name}' was canceled.", name);
+            if (log)
+                _logger.LogWarning("Process '{Name}' was canceled.", name);
+
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error while running process '{Name}'", name);
+            if (log)
+                _logger.LogError(ex, "Error while running process '{Name}'", name);
+
             throw new InvalidOperationException($"Error running process '{name}'", ex);
         }
         finally
