@@ -1,8 +1,6 @@
-﻿using Microsoft.Extensions.Logging;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -13,7 +11,7 @@ namespace Soenneker.Utils.Process.Abstract;
 /// <para/>
 /// Typically registered as Scoped in IoC (unless consumed by a Singleton).
 /// </summary>
-public interface IProcessUtil
+public partial interface IProcessUtil
 {
     /// <summary>
     /// Starts a new process with the specified parameters, optionally waits for it to exit,
@@ -126,12 +124,4 @@ public interface IProcessUtil
     ValueTask BashRun(string cmd, string workingDir, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
 
     ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Runs <paramref name="fileName"/> and produces every line it writes.  When both stdout *and* stderr are redirected
-    /// they are merged in‑order of arrival so the caller sees the exact chronological sequence.
-    /// </summary>
-    IAsyncEnumerable<string> StreamLines(string fileName, string? workingDirectory = null, string? arguments = null,
-        bool redirectOutput = true, bool redirectError = true, IDictionary<string, string>? environmentVariables = null, ILogger? logger = null,
-        [EnumeratorCancellation] CancellationToken cancellationToken = default);
 }
