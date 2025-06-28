@@ -1,17 +1,17 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using Soenneker.Extensions.String;
+using Soenneker.Extensions.Task;
+using Soenneker.Utils.Process.Abstract;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
-using Soenneker.Extensions.String;
-using Soenneker.Extensions.Task;
-using Soenneker.Utils.Process.Abstract;
 
 namespace Soenneker.Utils.Process;
 
 ///<inheritdoc cref="IProcessUtil"/>
-public sealed class ProcessUtil : IProcessUtil
+public sealed partial class ProcessUtil : IProcessUtil
 {
     private readonly ILogger<ProcessUtil> _logger;
 
@@ -188,7 +188,8 @@ public sealed class ProcessUtil : IProcessUtil
     }
 
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,
-        bool waitForExit = false, TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
+        bool waitForExit = false, TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null,
+        CancellationToken cancellationToken = default)
     {
         return IsRunning(name)
             ? ValueTask.FromResult(new List<string>(0))
@@ -267,7 +268,8 @@ public sealed class ProcessUtil : IProcessUtil
         return running;
     }
 
-    public async ValueTask BashRun(string cmd, string workingDir, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
+    public async ValueTask BashRun(string cmd, string workingDir, Dictionary<string, string>? environmentalVars = null,
+        CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("🟢 Running command: {command} (in {cwd})", cmd, workingDir);
 
@@ -281,7 +283,7 @@ public sealed class ProcessUtil : IProcessUtil
             UseShellExecute = false,
         };
 
-        if (environmentalVars is { Count: > 0 })
+        if (environmentalVars is {Count: > 0})
         {
             foreach ((string k, string v) in environmentalVars)
                 startInfo.Environment[k] = v; // .Environment works on every OS
@@ -336,7 +338,8 @@ public sealed class ProcessUtil : IProcessUtil
     }
 
 
-    public async ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
+    public async ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null,
+        CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("🔧 Running CMD command: {Command} (in {Cwd})", command, workingDirectory);
 
@@ -351,7 +354,7 @@ public sealed class ProcessUtil : IProcessUtil
             CreateNoWindow = true
         };
 
-        if (environmentalVars is { Count: > 0 })
+        if (environmentalVars is {Count: > 0})
         {
             foreach ((string k, string v) in environmentalVars)
                 startInfo.Environment[k] = v; // .Environment works on every OS
