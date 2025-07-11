@@ -24,7 +24,7 @@ public sealed partial class ProcessUtil : IProcessUtil
         TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
     {
         var outputLines = new List<string>(128);
-        var sync = new object();
+        Lock sync = new();
 
         var startInfo = new ProcessStartInfo
         {
@@ -56,7 +56,7 @@ public sealed partial class ProcessUtil : IProcessUtil
         {
             if (e.Data == null) return;
 
-            lock (sync)
+            using (sync.EnterScope())
             {
                 outputLines.Add(e.Data);
             }
@@ -71,7 +71,7 @@ public sealed partial class ProcessUtil : IProcessUtil
 
             var line = $"ERROR: {e.Data}";
 
-            lock (sync)
+            using (sync.EnterScope())
             {
                 outputLines.Add(line);
             }
@@ -145,7 +145,7 @@ public sealed partial class ProcessUtil : IProcessUtil
                 }
             }
 
-            lock (sync)
+            using (sync.EnterScope())
             {
                 return outputLines;
             }
@@ -362,23 +362,24 @@ public sealed partial class ProcessUtil : IProcessUtil
 
         using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(startInfo)!;
         var outputLines = new List<string>(128);
-        object sync = new();
+        Lock sync = new();
 
         DataReceivedEventHandler outHandler = (_, e) =>
         {
             if (e.Data == null) return;
-            lock (sync)
+            using (sync.EnterScope())
             {
                 outputLines.Add(e.Data);
             }
 
             _logger.LogInformation("{Line}", e.Data);
         };
+
         DataReceivedEventHandler errHandler = (_, e) =>
         {
             if (e.Data == null) return;
             var err = $"ERROR: {e.Data}";
-            lock (sync)
+            using (sync.EnterScope())
             {
                 outputLines.Add(err);
             }
