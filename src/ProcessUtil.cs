@@ -20,7 +20,7 @@ public sealed partial class ProcessUtil : IProcessUtil
         _logger = logger;
     }
 
-    public async ValueTask<List<string>> Start(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = true,
+    public async ValueTask<List<string>> Start(string fileName, string? workingDirectory = null, string? arguments = null, bool admin = false, bool waitForExit = true,
         TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
     {
         var outputLines = new List<string>(128);
@@ -28,7 +28,7 @@ public sealed partial class ProcessUtil : IProcessUtil
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = name,
+            FileName = fileName,
             Arguments = arguments ?? string.Empty,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -42,8 +42,8 @@ public sealed partial class ProcessUtil : IProcessUtil
                 startInfo.Environment[k] = v; // .Environment works on every OS
         }
 
-        if (directory.HasContent())
-            startInfo.WorkingDirectory = directory;
+        if (workingDirectory.HasContent())
+            startInfo.WorkingDirectory = workingDirectory;
 
         if (admin)
             startInfo.Verb = "runas";
@@ -86,7 +86,7 @@ public sealed partial class ProcessUtil : IProcessUtil
         try
         {
             if (!process.Start())
-                throw new InvalidOperationException($"Failed to start process '{name}'.");
+                throw new InvalidOperationException($"Failed to start process '{fileName}'.");
 
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
@@ -107,7 +107,7 @@ public sealed partial class ProcessUtil : IProcessUtil
                     await waitTask.NoSync();
 
                     if (process.ExitCode != 0)
-                        throw new InvalidOperationException($"Process '{name}' exited with code {process.ExitCode}.");
+                        throw new InvalidOperationException($"Process '{fileName}' exited with code {process.ExitCode}.");
                 }
                 else
                 {
@@ -140,7 +140,7 @@ public sealed partial class ProcessUtil : IProcessUtil
                         {
                         }
 
-                        throw new TimeoutException($"Process '{name}' did not exit within {timeout.Value.TotalMilliseconds} ms.");
+                        throw new TimeoutException($"Process '{fileName}' did not exit within {timeout.Value.TotalMilliseconds} ms.");
                     }
                 }
             }
@@ -153,16 +153,16 @@ public sealed partial class ProcessUtil : IProcessUtil
         catch (OperationCanceledException)
         {
             if (log)
-                _logger.LogWarning("Process '{Name}' was canceled.", name);
+                _logger.LogWarning("Process '{Name}' was canceled.", fileName);
 
             throw;
         }
         catch (Exception ex)
         {
             if (log)
-                _logger.LogError(ex, "Error while running process '{Name}'", name);
+                _logger.LogError(ex, "Error while running process '{Name}'", fileName);
 
-            throw new InvalidOperationException($"Error running process '{name}'", ex);
+            throw new InvalidOperationException($"Error running process '{fileName}'", ex);
         }
         finally
         {
@@ -185,6 +185,30 @@ public sealed partial class ProcessUtil : IProcessUtil
             {
             }
         }
+    }
+
+    public async ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("🟢 Starting: {fileName} (in {workingDir})", fileName, workingDirectory);
+
+        var processStartInfo = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            WorkingDirectory = workingDirectory,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using var process = new System.Diagnostics.Process();
+        process.StartInfo = processStartInfo;
+        process.Start();
+
+        Task<string> readTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        Task waitTask = process.WaitForExitAsync(cancellationToken);
+        await Task.WhenAll(readTask, waitTask).NoSync();
+        return readTask.Result;
     }
 
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,
@@ -336,7 +360,6 @@ public sealed partial class ProcessUtil : IProcessUtil
             }
         }
     }
-
 
     public async ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null,
         CancellationToken cancellationToken = default)

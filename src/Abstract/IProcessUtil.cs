@@ -17,8 +17,8 @@ public partial interface IProcessUtil
     /// Starts a new process with the specified parameters, optionally waits for it to exit,
     /// and collects standard output and error lines.
     /// </summary>
-    /// <param name="name">The executable name or full path of the process to start.</param>
-    /// <param name="directory">The working directory for the process. If null, uses the current directory.</param>
+    /// <param name="fileName">The executable name or full path of the process to start.</param>
+    /// <param name="workingDirectory">The working directory for the process. If null, uses the current directory.</param>
     /// <param name="arguments">The command-line arguments to pass to the process. If null or empty, no arguments are passed.</param>
     /// <param name="admin">If true, attempts to start the process with elevated (administrator) privileges.</param>
     /// <param name="waitForExit">
@@ -46,7 +46,7 @@ public partial interface IProcessUtil
     /// <exception cref="OperationCanceledException">
     /// Thrown if <paramref name="cancellationToken"/> is canceled while waiting for the process to exit.
     /// </exception>
-    ValueTask<List<string>> Start(string name, string? directory = null, string? arguments = null, bool admin = false, bool waitForExit = true,
+    ValueTask<List<string>> Start(string fileName, string? workingDirectory = null, string? arguments = null, bool admin = false, bool waitForExit = true,
         TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -124,4 +124,6 @@ public partial interface IProcessUtil
     ValueTask BashRun(string cmd, string workingDir, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
 
     ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
+
+    ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", CancellationToken cancellationToken = default);
 }

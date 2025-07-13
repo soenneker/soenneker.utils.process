@@ -27,7 +27,7 @@ public sealed class ProcessUtilTests : FixturedUnitTest
         string arguments = GetEchoArguments("Hello, World!");
 
         // Act
-        List<string> output = await _util.Start(name: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: CancellationToken);
+        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: CancellationToken);
 
         // Assert
         Assert.Contains("Hello, World!", output);
@@ -41,7 +41,7 @@ public sealed class ProcessUtilTests : FixturedUnitTest
         string arguments = GetSleepArguments(5); // Sleep for 5 seconds
 
         // Act
-        List<string> output = await _util.Start(name: command, arguments: arguments, waitForExit: false, log: false, cancellationToken: CancellationToken);
+        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: false, log: false, cancellationToken: CancellationToken);
 
         // Assert
         // Since we are not waiting for exit, output should be empty
@@ -87,7 +87,7 @@ public sealed class ProcessUtilTests : FixturedUnitTest
         // Act & Assert
         var exception = await Assert.ThrowsAsync<OperationCanceledException>(async () =>
         {
-            await _util.Start(name: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: cts.Token);
+            await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: cts.Token);
         });
 
         Assert.IsType<OperationCanceledException>(exception);
@@ -101,7 +101,7 @@ public sealed class ProcessUtilTests : FixturedUnitTest
         string arguments = GetEchoArguments("Test Argument");
 
         // Act
-        List<string> output = await _util.Start(name: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: CancellationToken);
+        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: CancellationToken);
 
         // Assert
         Assert.Contains("Test Argument", output);
