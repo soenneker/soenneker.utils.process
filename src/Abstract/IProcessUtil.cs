@@ -113,7 +113,7 @@ public partial interface IProcessUtil
     /// <summary>
     /// Executes a command using the Bash shell with the specified arguments in the given working directory.
     /// </summary>
-    /// <param name="cmd">The shell command to run (e.g., <c>make</c>, <c>git</c>, etc.).</param>
+    /// <param name="command">The shell command to run (e.g., <c>make</c>, <c>git</c>, etc.).</param>
     /// <param name="workingDir">The directory in which to execute the command.</param>
     /// <param name="cancellationToken">Optional token to cancel the command execution.</param>
     /// <returns>A <see cref="ValueTask"/> representing the asynchronous operation.</returns>
@@ -121,9 +121,11 @@ public partial interface IProcessUtil
     /// <remarks>
     /// This method uses <c>/bin/bash -c</c> to execute the full command, allowing for Bash-specific syntax like pipes, globs, and redirection.
     /// </remarks>
-    ValueTask BashRun(string cmd, string workingDir, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
+    ValueTask BashRun(string command, string workingDir, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
 
     ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
 
     ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", CancellationToken cancellationToken = default);
+
+    ValueTask<bool> CommandExists(string command, CancellationToken cancellationToken = default);
 }

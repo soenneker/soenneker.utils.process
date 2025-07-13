@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Soenneker.Extensions.ValueTask;
 
 namespace Soenneker.Utils.Process;
 
@@ -187,6 +188,19 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
+    public async ValueTask<bool> CommandExists(string command, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await StartAndGetOutput("where", command, "", cancellationToken).NoSync();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public async ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("🟢 Starting: {fileName} (in {workingDir})", fileName, workingDirectory);
@@ -292,15 +306,15 @@ public sealed partial class ProcessUtil : IProcessUtil
         return running;
     }
 
-    public async ValueTask BashRun(string cmd, string workingDir, Dictionary<string, string>? environmentalVars = null,
+    public async ValueTask BashRun(string command, string workingDir, Dictionary<string, string>? environmentalVars = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("🟢 Running command: {command} (in {cwd})", cmd, workingDir);
+        _logger.LogInformation("🟢 Running command: {command} (in {cwd})", command, workingDir);
 
         var startInfo = new ProcessStartInfo
         {
             FileName = "/bin/bash",
-            Arguments = $"-lc \"{cmd.Replace("\"", "\\\"")}\"",
+            Arguments = $"-lc \"{command.Replace("\"", "\\\"")}\"",
             WorkingDirectory = workingDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -337,7 +351,7 @@ public sealed partial class ProcessUtil : IProcessUtil
             await proc.WaitForExitAsync(cancellationToken).NoSync();
 
             if (proc.ExitCode != 0)
-                throw new Exception($"Run failed with exit code {proc.ExitCode} for command: {cmd}");
+                throw new Exception($"Run failed with exit code {proc.ExitCode} for command: {command}");
         }
         finally
         {
