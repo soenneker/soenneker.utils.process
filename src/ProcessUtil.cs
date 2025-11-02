@@ -1,13 +1,14 @@
 ﻿using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.String;
 using Soenneker.Extensions.Task;
+using Soenneker.Extensions.ValueTask;
 using Soenneker.Utils.Process.Abstract;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Soenneker.Extensions.ValueTask;
 
 namespace Soenneker.Utils.Process;
 
@@ -21,10 +22,11 @@ public sealed partial class ProcessUtil : IProcessUtil
         _logger = logger;
     }
 
-    public async ValueTask<List<string>> Start(string fileName, string? workingDirectory = null, string? arguments = null, bool admin = false, bool waitForExit = true,
-        TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default)
+    public async ValueTask<List<string>> Start(string fileName, string? workingDirectory = null, string? arguments = null, bool admin = false,
+        bool waitForExit = true, TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null,
+        CancellationToken cancellationToken = default)
     {
-        var outputLines = new List<string>(128);
+        var outputLines = new List<string>(256);
         Lock sync = new();
 
         var startInfo = new ProcessStartInfo
@@ -34,104 +36,123 @@ public sealed partial class ProcessUtil : IProcessUtil
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8
         };
 
-        if (environmentalVars is {Count: > 0})
+        if (environmentalVars is { Count: > 0 })
         {
-            foreach ((string k, string v) in environmentalVars)
-                startInfo.Environment[k] = v; // .Environment works on every OS
+            foreach (KeyValuePair<string, string> kvp in environmentalVars)
+                startInfo.Environment[kvp.Key] = kvp.Value;
         }
 
         if (workingDirectory.HasContent())
             startInfo.WorkingDirectory = workingDirectory;
 
-        if (admin)
+        // Elevation on Windows requires UseShellExecute = true (no redirects possible)
+        if (admin && OperatingSystem.IsWindows())
+        {
             startInfo.Verb = "runas";
+
+            if (startInfo.RedirectStandardOutput || startInfo.RedirectStandardError)
+            {
+                // We must disable redirection for elevation
+                startInfo.RedirectStandardOutput = false;
+                startInfo.RedirectStandardError = false;
+                _logger.LogDebug("Elevation requested: switching to UseShellExecute=true (output will not be captured).");
+            }
+
+            startInfo.UseShellExecute = true;
+            startInfo.CreateNoWindow = false; // elevated prompts require a window
+        }
 
         using var process = new System.Diagnostics.Process();
         process.StartInfo = startInfo;
         process.EnableRaisingEvents = true;
 
-        void OutputHandler(object sender, DataReceivedEventArgs e)
+        // TCS that completes when the async readers finish (e.Data == null)
+        var stdoutDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stderrDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OutputHandler(object? _, DataReceivedEventArgs e)
         {
-            if (e.Data == null) return;
+            if (e.Data is null)
+            {
+                stdoutDone.TrySetResult();
+                return;
+            }
 
             using (sync.EnterScope())
-            {
                 outputLines.Add(e.Data);
-            }
 
             if (log)
                 _logger.LogInformation("{Data}", e.Data);
         }
 
-        void ErrorHandler(object sender, DataReceivedEventArgs e)
+        void ErrorHandler(object? _, DataReceivedEventArgs e)
         {
-            if (e.Data == null) return;
+            if (e.Data is null)
+            {
+                stderrDone.TrySetResult();
+                return;
+            }
 
             var line = $"ERROR: {e.Data}";
-
             using (sync.EnterScope())
-            {
                 outputLines.Add(line);
-            }
 
             if (log)
                 _logger.LogError("{Data}", e.Data);
         }
 
-        process.OutputDataReceived += OutputHandler;
-        process.ErrorDataReceived += ErrorHandler;
+        if (startInfo.RedirectStandardOutput)
+            process.OutputDataReceived += OutputHandler;
+        if (startInfo.RedirectStandardError)
+            process.ErrorDataReceived += ErrorHandler;
 
         try
         {
             if (!process.Start())
                 throw new InvalidOperationException($"Failed to start process '{fileName}'.");
 
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+            if (startInfo.RedirectStandardOutput)
+                process.BeginOutputReadLine();
+            if (startInfo.RedirectStandardError)
+                process.BeginErrorReadLine();
 
             if (waitForExit)
             {
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                Task waitTask = process.WaitForExitAsync(linkedCts.Token);
 
-                // choose a delay task based on timeout (infinite if null)
-                Task delayTask = timeout.HasValue ? Task.Delay(timeout.Value, cancellationToken) : Task.Delay(Timeout.Infinite, cancellationToken);
+                Task allDone = startInfo.UseShellExecute
+                    ? process.WaitForExitAsync(linkedCts.Token) // no redirection, nothing to drain
+                    : Task.WhenAll(process.WaitForExitAsync(linkedCts.Token), stdoutDone.Task, stderrDone.Task);
 
-                Task completed = await Task.WhenAny(waitTask, delayTask).NoSync();
+                Task delayTask = timeout.HasValue ? Task.Delay(timeout.Value, linkedCts.Token) : Task.Delay(Timeout.Infinite, linkedCts.Token);
 
-                if (completed == waitTask)
+                Task completed = await Task.WhenAny(allDone, delayTask).NoSync();
+
+                if (completed != allDone)
                 {
-                    // process exited before timeout/cancellation
-                    await waitTask.NoSync();
-
-                    if (process.ExitCode != 0)
-                        throw new InvalidOperationException($"Process '{fileName}' exited with code {process.ExitCode}.");
-                }
-                else
-                {
-                    // delayTask finished: either timeout or cancellation
+                    // timeout or external cancellation
                     if (cancellationToken.IsCancellationRequested)
                     {
-                        // caller canceled
                         try
                         {
-                            await linkedCts.CancelAsync().NoSync();
-
+                            linkedCts.Cancel();
                             if (!process.HasExited)
                                 process.Kill(entireProcessTree: true);
                         }
                         catch
                         {
+                            /* best-effort */
                         }
 
                         cancellationToken.ThrowIfCancellationRequested();
                     }
                     else
                     {
-                        // timeout expired
                         try
                         {
                             if (!process.HasExited)
@@ -139,23 +160,32 @@ public sealed partial class ProcessUtil : IProcessUtil
                         }
                         catch
                         {
+                            /* best-effort */
                         }
 
-                        throw new TimeoutException($"Process '{fileName}' did not exit within {timeout.Value.TotalMilliseconds} ms.");
+                        throw new TimeoutException($"Process '{fileName}' did not exit within {timeout!.Value.TotalMilliseconds} ms.");
                     }
+                }
+
+                // ensure the awaited task actually throws if needed
+                await allDone.NoSync();
+
+                if (process.ExitCode != 0)
+                {
+                    string tail = GetTail(outputLines, 40);
+                    throw new InvalidOperationException(
+                        $"Process '{fileName}' exited with code {process.ExitCode}.{(tail.Length > 0 ? Environment.NewLine + tail : string.Empty)}");
                 }
             }
 
+            // snapshot the lines
             using (sync.EnterScope())
-            {
-                return outputLines;
-            }
+                return [..outputLines];
         }
         catch (OperationCanceledException)
         {
             if (log)
                 _logger.LogWarning("Process '{Name}' was canceled.", fileName);
-
             throw;
         }
         catch (Exception ex)
@@ -163,36 +193,55 @@ public sealed partial class ProcessUtil : IProcessUtil
             if (log)
                 _logger.LogError(ex, "Error while running process '{Name}'", fileName);
 
-            throw new InvalidOperationException($"Error running process '{fileName}'", ex);
+            string tail = GetTail(outputLines, 40);
+            // Wrap with captured context to aid callers
+            throw new InvalidOperationException($"Error running process '{fileName}'.{(tail.Length > 0 ? Environment.NewLine + tail : string.Empty)}", ex);
         }
         finally
         {
-            process.OutputDataReceived -= OutputHandler;
-            process.ErrorDataReceived -= ErrorHandler;
+            if (startInfo.RedirectStandardOutput)
+            {
+                process.OutputDataReceived -= OutputHandler;
+                try
+                {
+                    process.CancelOutputRead();
+                }
+                catch (InvalidOperationException)
+                {
+                }
+            }
 
-            try
+            if (startInfo.RedirectStandardError)
             {
-                process.CancelOutputRead();
+                process.ErrorDataReceived -= ErrorHandler;
+                try
+                {
+                    process.CancelErrorRead();
+                }
+                catch (InvalidOperationException)
+                {
+                }
             }
-            catch (InvalidOperationException)
-            {
-            }
+        }
 
-            try
-            {
-                process.CancelErrorRead();
-            }
-            catch (InvalidOperationException)
-            {
-            }
+        static string GetTail(List<string> lines, int max)
+        {
+            int count = lines.Count;
+            if (count == 0)
+                return string.Empty;
+            int start = Math.Max(count - max, 0);
+            return string.Join(Environment.NewLine, CollectionsMarshal.AsSpan(lines).Slice(start));
         }
     }
 
-    public async ValueTask<bool> CommandExists(string command, CancellationToken cancellationToken = default)
+    public async ValueTask<bool> CommandExists(string command, CancellationToken ct = default)
     {
         try
         {
-            await StartAndGetOutput("where", command, "", cancellationToken).NoSync();
+            if (OperatingSystem.IsWindows())
+                await StartAndGetOutput("where", command, "", ct).NoSync();
+            else
+                await StartAndGetOutput("/usr/bin/env", $"bash -lc \"command -v {command}\"", "", ct).NoSync();
             return true;
         }
         catch
@@ -201,7 +250,8 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
-    public async ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", CancellationToken cancellationToken = default)
+    public async ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "",
+        CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("🟢 Starting: {fileName} (in {workingDir})", fileName, workingDirectory);
 
@@ -211,18 +261,26 @@ public sealed partial class ProcessUtil : IProcessUtil
             Arguments = arguments,
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
+            RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8
         };
 
         using var process = new System.Diagnostics.Process();
         process.StartInfo = processStartInfo;
         process.Start();
 
-        Task<string> readTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        Task waitTask = process.WaitForExitAsync(cancellationToken);
-        await Task.WhenAll(readTask, waitTask).NoSync();
-        return readTask.Result;
+        Task<string> stdOut = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        Task<string> stdErr = process.StandardError.ReadToEndAsync(cancellationToken);
+        await Task.WhenAll(stdOut, stdErr, process.WaitForExitAsync(cancellationToken)).NoSync();
+
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException(
+                $"'{fileName} {arguments}' exited with {process.ExitCode}{(stdErr.Result.Length > 0 ? Environment.NewLine + stdErr.Result : string.Empty)}");
+
+        return stdOut.Result;
     }
 
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,
@@ -238,7 +296,7 @@ public sealed partial class ProcessUtil : IProcessUtil
     {
         foreach (string name in processNames)
         {
-            await Kill(name, cancellationToken: cancellationToken).NoSync();
+            await Kill(name, waitForExit, cancellationToken: cancellationToken).NoSync();
         }
     }
 
@@ -265,7 +323,7 @@ public sealed partial class ProcessUtil : IProcessUtil
         {
             if (process.ProcessName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
-                await Kill(process, cancellationToken: cancellationToken).NoSync();
+                await Kill(process, waitForExit, cancellationToken: cancellationToken).NoSync();
                 killed++;
             }
         }
@@ -282,16 +340,21 @@ public sealed partial class ProcessUtil : IProcessUtil
 
     public Task Kill(System.Diagnostics.Process process, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("Killing process '{Name}' (PID {Id})...", process.ProcessName, process.Id);
-        process.Kill(entireProcessTree: false);
-
-        if (waitForExit)
+        try
         {
-            _logger.LogDebug("Waiting for process '{Name}' (PID {Id}) to exit...", process.ProcessName, process.Id);
-            return process.WaitForExitAsync(cancellationToken);
+            _logger.LogInformation("Killing process '{Name}' (PID {Id})...", process.ProcessName, process.Id);
+            process.Kill(entireProcessTree: false);
+        }
+        catch (InvalidOperationException)
+        {
+            /* already exited */
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            /* access/privilege issues */
         }
 
-        return Task.CompletedTask;
+        return waitForExit ? process.WaitForExitAsync(cancellationToken) : Task.CompletedTask;
     }
 
     public bool IsRunning(string name)
@@ -319,25 +382,44 @@ public sealed partial class ProcessUtil : IProcessUtil
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8
         };
 
-        if (environmentalVars is {Count: > 0})
+        if (environmentalVars is { Count: > 0 })
         {
             foreach ((string k, string v) in environmentalVars)
-                startInfo.Environment[k] = v; // .Environment works on every OS
+                startInfo.Environment[k] = v;
         }
 
-        using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(startInfo)!;
+        using var proc = new System.Diagnostics.Process();
+        proc.StartInfo = startInfo;
+        proc.EnableRaisingEvents = true;
+
+        // complete when e.Data == null
+        var stdoutDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stderrDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         DataReceivedEventHandler outHandler = (_, e) =>
         {
-            if (e.Data != null)
-                _logger.LogInformation("[stdout] {line}", e.Data);
+            if (e.Data is null)
+            {
+                stdoutDone.TrySetResult();
+                return;
+            }
+
+            _logger.LogInformation("[stdout] {line}", e.Data);
         };
+
         DataReceivedEventHandler errHandler = (_, e) =>
         {
-            if (e.Data != null)
-                _logger.LogWarning("[stderr] {line}", e.Data);
+            if (e.Data is null)
+            {
+                stderrDone.TrySetResult();
+                return;
+            }
+
+            _logger.LogWarning("[stderr] {line}", e.Data);
         };
 
         proc.OutputDataReceived += outHandler;
@@ -345,13 +427,19 @@ public sealed partial class ProcessUtil : IProcessUtil
 
         try
         {
+            if (!proc.Start())
+                throw new InvalidOperationException("Failed to start bash process.");
+
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
 
-            await proc.WaitForExitAsync(cancellationToken).NoSync();
+            // wait for: exit + both streams drained
+            Task allDone = Task.WhenAll(proc.WaitForExitAsync(cancellationToken), stdoutDone.Task, stderrDone.Task);
+
+            await allDone.NoSync();
 
             if (proc.ExitCode != 0)
-                throw new Exception($"Run failed with exit code {proc.ExitCode} for command: {command}");
+                throw new InvalidOperationException($"Run failed with exit code {proc.ExitCode} for command: {command}");
         }
         finally
         {
@@ -388,38 +476,53 @@ public sealed partial class ProcessUtil : IProcessUtil
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            StandardOutputEncoding = System.Text.Encoding.UTF8,
+            StandardErrorEncoding = System.Text.Encoding.UTF8
         };
 
-        if (environmentalVars is {Count: > 0})
+        if (environmentalVars is { Count: > 0 })
         {
             foreach ((string k, string v) in environmentalVars)
-                startInfo.Environment[k] = v; // .Environment works on every OS
+                startInfo.Environment[k] = v;
         }
 
-        using System.Diagnostics.Process proc = System.Diagnostics.Process.Start(startInfo)!;
+        using var proc = new System.Diagnostics.Process();
+        proc.StartInfo = startInfo;
+        proc.EnableRaisingEvents = true;
+
+        // capture (optional) while ensuring we detect end-of-stream
         var outputLines = new List<string>(128);
         Lock sync = new();
 
+        var stdoutDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stderrDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
         DataReceivedEventHandler outHandler = (_, e) =>
         {
-            if (e.Data == null) return;
-            using (sync.EnterScope())
+            if (e.Data is null)
             {
-                outputLines.Add(e.Data);
+                stdoutDone.TrySetResult();
+                return;
             }
+
+            using (sync.EnterScope())
+                outputLines.Add(e.Data);
 
             _logger.LogInformation("{Line}", e.Data);
         };
 
         DataReceivedEventHandler errHandler = (_, e) =>
         {
-            if (e.Data == null) return;
+            if (e.Data is null)
+            {
+                stderrDone.TrySetResult();
+                return;
+            }
+
             var err = $"ERROR: {e.Data}";
             using (sync.EnterScope())
-            {
                 outputLines.Add(err);
-            }
 
             _logger.LogError("{Line}", e.Data);
         };
@@ -429,17 +532,22 @@ public sealed partial class ProcessUtil : IProcessUtil
 
         try
         {
+            if (!proc.Start())
+                throw new InvalidOperationException("Failed to start cmd.exe");
+
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
 
-            await proc.WaitForExitAsync(cancellationToken).NoSync();
+            // wait for: exit + both streams drained
+            Task allDone = Task.WhenAll(proc.WaitForExitAsync(cancellationToken), stdoutDone.Task, stderrDone.Task);
+
+            await allDone.NoSync();
 
             if (proc.ExitCode != 0)
                 throw new InvalidOperationException($"CMD '{command}' exited with code {proc.ExitCode}.");
         }
         finally
         {
-            // unsubscribe and cancel reading
             proc.OutputDataReceived -= outHandler;
             proc.ErrorDataReceived -= errHandler;
             try
