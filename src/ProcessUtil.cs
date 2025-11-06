@@ -60,6 +60,8 @@ public sealed partial class ProcessUtil : IProcessUtil
                 // We must disable redirection for elevation
                 startInfo.RedirectStandardOutput = false;
                 startInfo.RedirectStandardError = false;
+                startInfo.StandardOutputEncoding = null;
+                startInfo.StandardErrorEncoding = null;
                 _logger.LogDebug("Elevation requested: switching to UseShellExecute=true (output will not be captured).");
             }
 
