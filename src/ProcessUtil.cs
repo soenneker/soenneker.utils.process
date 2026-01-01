@@ -274,15 +274,18 @@ public sealed partial class ProcessUtil : IProcessUtil
         process.StartInfo = processStartInfo;
         process.Start();
 
-        Task<string> stdOut = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        Task<string> stdErr = process.StandardError.ReadToEndAsync(cancellationToken);
-        await Task.WhenAll(stdOut, stdErr, process.WaitForExitAsync(cancellationToken)).NoSync();
+        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        Task<string> stdErrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        await Task.WhenAll(stdOutTask, stdErrTask, process.WaitForExitAsync(cancellationToken)).NoSync();
+
+        string stdOut = stdOutTask.Result;
+        string stdErr = stdErrTask.Result;
 
         if (process.ExitCode != 0)
             throw new InvalidOperationException(
-                $"'{fileName} {arguments}' exited with {process.ExitCode}{(stdErr.Result.Length > 0 ? Environment.NewLine + stdErr.Result : string.Empty)}");
+                $"'{fileName} {arguments}' exited with {process.ExitCode}{(stdErr.Length > 0 ? Environment.NewLine + stdErr : string.Empty)}");
 
-        return stdOut.Result;
+        return stdOut;
     }
 
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,
