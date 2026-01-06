@@ -76,21 +76,18 @@ public sealed class ProcessUtilTests : FixturedUnitTest
     }
 
     [Fact]
-    public async Task Start_ProcessIsCanceledBeforeCompletion_ThrowsOperationCanceledException()
+    public async Task Start_ProcessIsCanceledBeforeCompletion_ThrowsTaskCanceledException()
     {
-        // Arrange
         string command = GetSleepCommand();
-        string arguments = GetSleepArguments(10); // Sleep for 10 seconds
-        using var cts = new CancellationTokenSource();
-        cts.CancelAfter(2000); // Cancel after 1 second
+        string arguments = GetSleepArguments(10);
 
-        // Act & Assert
-        var exception = await Assert.ThrowsAsync<OperationCanceledException>(async () =>
-        {
-            await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: cts.Token);
-        });
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
-        Assert.IsType<OperationCanceledException>(exception);
+        var ex = await Assert.ThrowsAsync<TaskCanceledException>(() =>
+            _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: cts.Token).AsTask());
+
+        // Optional: verify it was YOUR token
+        Assert.Equal(cts.Token, ex.CancellationToken);
     }
 
     [Fact]
