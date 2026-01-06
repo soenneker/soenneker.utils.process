@@ -80,14 +80,32 @@ public sealed partial class ProcessUtil
 
         // Close the writer once *both* pumps finish.
         Task closeWriterTask = Task.WhenAll(stdoutTask, stderrTask)
-                                   .ContinueWith(_ => channel.Writer.TryComplete(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
+                                   .ContinueWith(static (_, state) => ((ChannelWriter<string>)state!).TryComplete(), channel.Writer, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
                                        TaskScheduler.Default);
 
-        // Forward lines downstream.
-        while (await channel.Reader.WaitToReadAsync(cancellationToken).NoSync())
+        try
         {
-            while (channel.Reader.TryRead(out string? line))
-                yield return line;
+            // Forward lines downstream.
+            while (await channel.Reader.WaitToReadAsync(cancellationToken).NoSync())
+            {
+                while (channel.Reader.TryRead(out string? line))
+                    yield return line;
+            }
+        }
+        finally
+        {
+            // If the enumerator is disposed early (caller stops enumerating), ensure the process doesn't keep running.
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    /* ignored */
+                }
+            }
         }
 
         await process.WaitForExitAsync(cancellationToken).NoSync();
@@ -103,7 +121,6 @@ public sealed partial class ProcessUtil
     private static async Task PumpAsync(StreamReader reader, ChannelWriter<string> writer, ILogger? logger, bool isError, CancellationToken cancellationToken)
     {
         LogLevel logLevel = isError ? LogLevel.Warning : LogLevel.Information;
-        string prefix = isError ? "[stderr] " : string.Empty;
 
         try
         {
@@ -114,7 +131,8 @@ public sealed partial class ProcessUtil
                 if (line is null)
                     break;
 
-                string payload = prefix + line;
+                // Avoid allocating when stdout: payload is the original line instance.
+                string payload = isError ? string.Concat("[stderr] ", line) : line;
                 logger?.Log(logLevel, "{Line}", payload);
                 await writer.WriteAsync(payload, cancellationToken).NoSync();
             }
@@ -122,10 +140,6 @@ public sealed partial class ProcessUtil
         catch (OperationCanceledException)
         {
             // Cancellation is handled by the outer method.
-        }
-        finally
-        {
-            writer.TryComplete();
         }
     }
 }
