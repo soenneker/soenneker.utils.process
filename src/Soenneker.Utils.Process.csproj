@@ -39,7 +39,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Soenneker.Extensions.String" Version="4.0.598" />
+        <PackageReference Include="Soenneker.Extensions.String" Version="4.0.599" />
         <PackageReference Include="Soenneker.Extensions.Task" Version="4.0.111" />
         <PackageReference Include="Soenneker.Extensions.ValueTask" Version="4.0.104" />
     </ItemGroup>
