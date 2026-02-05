@@ -27,11 +27,26 @@ public sealed partial class ProcessUtil : IProcessUtil
         try
         {
             if (_isWindows)
-                await StartAndGetOutput("where", command, "", ct)
-                    .NoSync();
+            {
+                await StartAndGetOutput(
+                    "where",
+                    command,
+                    "",
+                    timeout: TimeSpan.FromSeconds(2),
+                    cancellationToken: ct
+                ).NoSync();
+            }
             else
-                await StartAndGetOutput("/usr/bin/env", $"bash -lc \"command -v {command}\"", "", ct)
-                    .NoSync();
+            {
+                await StartAndGetOutput(
+                    "/usr/bin/env",
+                    $"bash -lc \"command -v {command}\"",
+                    "",
+                    timeout: TimeSpan.FromSeconds(2),
+                    cancellationToken: ct
+                ).NoSync();
+            }
+
             return true;
         }
         catch
@@ -40,18 +55,59 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
-    public async ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "",
+    public async ValueTask<bool> CommandExistsAndRuns(
+        string command,
+        string versionArgs = "--version",
+        TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation("🟢 Starting: {fileName} (in {workingDir})", fileName, workingDirectory);
+        // 1) fast path: does it exist on PATH?
+        if (!await CommandExists(command, cancellationToken).NoSync())
+            return false;
 
-        var processStartInfo = new ProcessStartInfo
+        // 2) can it actually run and exit?
+        try
+        {
+            _ = await StartAndGetOutput(
+                command,
+                versionArgs,
+                "",
+                timeout ?? TimeSpan.FromSeconds(3),
+                cancellationToken
+            ).NoSync();
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async ValueTask<string> StartAndGetOutput(
+        string fileName = "",
+        string arguments = "",
+        string workingDirectory = "",
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("🟢 Starting: {file} {args} (in {cwd})", fileName, arguments, workingDirectory);
+
+        using CancellationTokenSource? timeoutCts = timeout.HasValue ? new CancellationTokenSource(timeout.Value) : null;
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeoutCts?.Token ?? CancellationToken.None);
+
+        var psi = new ProcessStartInfo
         {
             FileName = fileName,
             Arguments = arguments,
-            WorkingDirectory = workingDirectory,
+            WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory)
+                ? Environment.CurrentDirectory
+                : workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true,
             StandardOutputEncoding = System.Text.Encoding.UTF8,
@@ -59,23 +115,41 @@ public sealed partial class ProcessUtil : IProcessUtil
         };
 
         using var process = new System.Diagnostics.Process();
-        process.StartInfo = processStartInfo;
-        process.Start();
+        process.StartInfo = psi;
 
-        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        Task<string> stdErrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        if (!process.Start())
+            throw new InvalidOperationException($"Failed to start '{fileName}'.");
 
-        await Task.WhenAll(stdOutTask, stdErrTask, process.WaitForExitAsync(cancellationToken))
-                  .NoSync();
+        // Prevent interactive tools from waiting on stdin
+        try { process.StandardInput.Close(); } catch { }
 
-        string stdOut = stdOutTask.Result;
-        string stdErr = stdErrTask.Result;
+        // Kill on cancel/timeout (dispose registration before process is disposed)
+        await using CancellationTokenRegistration reg = linkedCts.Token.Register(static state =>
+        {
+            var p = (System.Diagnostics.Process)state!;
+            try
+            {
+                if (!p.HasExited)
+                    p.Kill(entireProcessTree: true);
+            }
+            catch { }
+        }, process);
+
+        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(linkedCts.Token);
+        Task<string> stdErrTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
+
+        await Task.WhenAll(
+            stdOutTask,
+            stdErrTask,
+            process.WaitForExitAsync(linkedCts.Token)
+        ).NoSync();
 
         if (process.ExitCode != 0)
             throw new InvalidOperationException(
-                $"'{fileName} {arguments}' exited with {process.ExitCode}{(stdErr.Length > 0 ? Environment.NewLine + stdErr : string.Empty)}");
+                $"'{fileName} {arguments}' exited with {process.ExitCode}" +
+                (stdErrTask.Result.Length > 0 ? Environment.NewLine + stdErrTask.Result : string.Empty));
 
-        return stdOut;
+        return stdOutTask.Result;
     }
 
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,

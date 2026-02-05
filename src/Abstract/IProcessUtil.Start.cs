@@ -87,6 +87,7 @@ public partial interface IProcessUtil
     /// Kills all running processes whose process name (without extension) starts with the specified prefix.
     /// </summary>
     /// <param name="startsWith">The prefix to match against running process names.</param>
+    /// <param name="cancellationToken"></param>
     ValueTask KillThatStartWith(string startsWith, bool waitForExit = false, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -110,6 +111,7 @@ public partial interface IProcessUtil
     /// </summary>
     /// <param name="command">The shell command to run (e.g., <c>make</c>, <c>git</c>, etc.).</param>
     /// <param name="workingDir">The directory in which to execute the command.</param>
+    /// <param name="environmentalVars"></param>
     /// <param name="cancellationToken">Optional token to cancel the command execution.</param>
     /// <returns>A <see cref="ValueTask"/> representing the asynchronous operation.</returns>
     /// <exception cref="Exception">Thrown if the command exits with a non-zero status code.</exception>
@@ -118,9 +120,61 @@ public partial interface IProcessUtil
     /// </remarks>
     ValueTask BashRun(string command, string workingDir, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Asynchronously executes a command-line process in the specified working directory, with optional environment
+    /// variables and cancellation support.
+    /// </summary>
+    /// <remarks>If the specified command or working directory is invalid, the operation may fail. The process
+    /// inherits the current environment variables unless additional variables are provided. The operation can be
+    /// cancelled by passing a triggered cancellation token.</remarks>
+    /// <param name="command">The command to execute. This should be the name or path of a valid executable or script.</param>
+    /// <param name="workingDirectory">The directory in which to execute the command. Must be a valid file system path.</param>
+    /// <param name="environmentalVars">A dictionary containing environment variables to set for the process, or null to use the current environment
+    /// variables.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation before the command completes.</param>
+    /// <returns>A ValueTask that represents the asynchronous operation of executing the command.</returns>
     ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
 
-    ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Starts a process with the specified parameters and asynchronously retrieves its standard output as a string.
+    /// </summary>
+    /// <remarks>If the process does not complete within the specified timeout, the operation is canceled. The
+    /// method captures only the standard output stream; standard error is not included in the result.</remarks>
+    /// <param name="fileName">The name or path of the executable file to start. If not specified, an empty string is used.</param>
+    /// <param name="arguments">The command-line arguments to pass to the executable. If not specified, an empty string is used.</param>
+    /// <param name="workingDirectory">The directory in which to start the process. If not specified, the current working directory is used.</param>
+    /// <param name="timeout">The maximum duration to wait for the process to complete. If null, the operation waits indefinitely.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the operation. The default value is <see cref="CancellationToken.None"/>.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result contains the standard output of the process
+    /// as a string.</returns>
+    ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Asynchronously determines whether the specified command is available on the system.
+    /// </summary>
+    /// <remarks>This method performs an asynchronous check for the command's existence, allowing for
+    /// cancellation of the operation if needed.</remarks>
+    /// <param name="command">The name of the command to check for existence. This parameter cannot be null or empty.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation. The default value is CancellationToken.None.</param>
+    /// <returns>A value indicating whether the command exists. Returns <see langword="true"/> if the command is found;
+    /// otherwise, <see langword="false"/>.</returns>
     ValueTask<bool> CommandExists(string command, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Determines whether the specified command exists on the system and can be executed successfully.
+    /// </summary>
+    /// <remarks>Use this method to validate the availability of external commands before invoking them in
+    /// scripts or applications. This can help prevent runtime errors due to missing or misconfigured
+    /// dependencies.</remarks>
+    /// <param name="command">The name of the command-line executable to check for existence and execution capability.</param>
+    /// <param name="versionArgs">The arguments to pass to the command to verify its execution, typically used to retrieve version information.
+    /// Defaults to "--version".</param>
+    /// <param name="timeout">The maximum duration to wait for the command to execute before timing out. If not specified, a default timeout
+    /// is used.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
+    /// <returns>A task that represents the asynchronous operation. The task result is <see langword="true"/> if the command
+    /// exists and runs successfully; otherwise, <see langword="false"/>.</returns>
+    ValueTask<bool> CommandExistsAndRuns(string command, string versionArgs = "--version", TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default);
 }
