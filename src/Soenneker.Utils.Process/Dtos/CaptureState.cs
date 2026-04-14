@@ -1,8 +1,8 @@
-﻿using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
-namespace Soenneker.Utils.Process;
+namespace Soenneker.Utils.Process.Dtos;
 
 internal sealed class CaptureState
 {

@@ -1,4 +1,5 @@
 using Soenneker.Utils.Process.Abstract;
+using Soenneker.Utils.Process.Dtos;
 using Soenneker.Tests.FixturedUnit;
 using Xunit;
 using System.Collections.Generic;
@@ -102,6 +103,30 @@ public sealed class ProcessUtilTests : FixturedUnitTest
 
         // Assert
         Assert.Contains("Test Argument", output);
+    }
+
+    [Fact]
+    public async Task StartDetached_CancellationTokenKillsProcess()
+    {
+        string command = GetSleepCommand();
+        string arguments = GetSleepArguments(10);
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+
+        System.Diagnostics.Process? process = await _util.StartDetached(new ProcessStartDto
+        {
+            FileName = command,
+            Arguments = arguments,
+            Log = false
+        }, cts.Token);
+
+        Assert.NotNull(process);
+
+        using (process)
+        {
+            await process.WaitForExitAsync(CancellationToken.None);
+            Assert.True(process.HasExited);
+        }
     }
 
     private string GetEchoCommand()

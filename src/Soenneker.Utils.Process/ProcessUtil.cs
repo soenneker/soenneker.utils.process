@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
+using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Utils.Process;
 
@@ -15,7 +16,7 @@ public sealed partial class ProcessUtil : IProcessUtil
 {
     private readonly ILogger<ProcessUtil> _logger;
 
-    private static bool _isWindows => OperatingSystem.IsWindows();
+    private bool _isWindows => RuntimeUtil.IsWindows();
 
     public ProcessUtil(ILogger<ProcessUtil> logger)
     {
@@ -28,23 +29,13 @@ public sealed partial class ProcessUtil : IProcessUtil
         {
             if (_isWindows)
             {
-                await StartAndGetOutput(
-                    "where",
-                    command,
-                    "",
-                    timeout: TimeSpan.FromSeconds(2),
-                    cancellationToken: ct
-                ).NoSync();
+                await StartAndGetOutput("where", command, "", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct)
+                    .NoSync();
             }
             else
             {
-                await StartAndGetOutput(
-                    "/usr/bin/env",
-                    $"bash -lc \"command -v {command}\"",
-                    "",
-                    timeout: TimeSpan.FromSeconds(2),
-                    cancellationToken: ct
-                ).NoSync();
+                await StartAndGetOutput("/usr/bin/env", $"bash -lc \"command -v {command}\"", "", timeout: TimeSpan.FromSeconds(2), cancellationToken: ct)
+                    .NoSync();
             }
 
             return true;
@@ -55,26 +46,19 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
-    public async ValueTask<bool> CommandExistsAndRuns(
-        string command,
-        string versionArgs = "--version",
-        TimeSpan? timeout = null,
+    public async ValueTask<bool> CommandExistsAndRuns(string command, string versionArgs = "--version", TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
         // 1) fast path: does it exist on PATH?
-        if (!await CommandExists(command, cancellationToken).NoSync())
+        if (!await CommandExists(command, cancellationToken)
+                .NoSync())
             return false;
 
         // 2) can it actually run and exit?
         try
         {
-            _ = await StartAndGetOutput(
-                command,
-                versionArgs,
-                "",
-                timeout ?? TimeSpan.FromSeconds(3),
-                cancellationToken
-            ).NoSync();
+            _ = await StartAndGetOutput(command, versionArgs, "", timeout ?? TimeSpan.FromSeconds(3), cancellationToken)
+                .NoSync();
 
             return true;
         }
@@ -84,27 +68,19 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
-    public async ValueTask<string> StartAndGetOutput(
-        string fileName = "",
-        string arguments = "",
-        string workingDirectory = "",
-        TimeSpan? timeout = null,
+    public async ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("🟢 Starting: {file} {args} (in {cwd})", fileName, arguments, workingDirectory);
 
         using CancellationTokenSource? timeoutCts = timeout.HasValue ? new CancellationTokenSource(timeout.Value) : null;
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeoutCts?.Token ?? CancellationToken.None);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts?.Token ?? CancellationToken.None);
 
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
             Arguments = arguments,
-            WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory)
-                ? Environment.CurrentDirectory
-                : workingDirectory,
+            WorkingDirectory = string.IsNullOrWhiteSpace(workingDirectory) ? Environment.CurrentDirectory : workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             RedirectStandardInput = true,
@@ -121,7 +97,13 @@ public sealed partial class ProcessUtil : IProcessUtil
             throw new InvalidOperationException($"Failed to start '{fileName}'.");
 
         // Prevent interactive tools from waiting on stdin
-        try { process.StandardInput.Close(); } catch { }
+        try
+        {
+            process.StandardInput.Close();
+        }
+        catch
+        {
+        }
 
         // Kill on cancel/timeout (dispose registration before process is disposed)
         await using CancellationTokenRegistration reg = linkedCts.Token.Register(static state =>
@@ -132,22 +114,20 @@ public sealed partial class ProcessUtil : IProcessUtil
                 if (!p.HasExited)
                     p.Kill(entireProcessTree: true);
             }
-            catch { }
+            catch
+            {
+            }
         }, process);
 
         Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(linkedCts.Token);
         Task<string> stdErrTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
 
-        await Task.WhenAll(
-            stdOutTask,
-            stdErrTask,
-            process.WaitForExitAsync(linkedCts.Token)
-        ).NoSync();
+        await Task.WhenAll(stdOutTask, stdErrTask, process.WaitForExitAsync(linkedCts.Token))
+                  .NoSync();
 
         if (process.ExitCode != 0)
-            throw new InvalidOperationException(
-                $"'{fileName} {arguments}' exited with {process.ExitCode}" +
-                (stdErrTask.Result.Length > 0 ? Environment.NewLine + stdErrTask.Result : string.Empty));
+            throw new InvalidOperationException($"'{fileName} {arguments}' exited with {process.ExitCode}" +
+                                                (stdErrTask.Result.Length > 0 ? Environment.NewLine + stdErrTask.Result : string.Empty));
 
         return stdOutTask.Result;
     }
@@ -188,9 +168,11 @@ public sealed partial class ProcessUtil : IProcessUtil
             first = processes[0];
 
             for (var i = 1; i < processes.Length; i++)
-                processes[i].Dispose();
+                processes[i]
+                    .Dispose();
 
-            await Kill(first, waitForExit, cancellationToken).NoSync();
+            await Kill(first, waitForExit, cancellationToken)
+                .NoSync();
         }
         finally
         {
@@ -265,7 +247,8 @@ public sealed partial class ProcessUtil : IProcessUtil
         bool running = processes.Length > 0;
 
         for (var i = 0; i < processes.Length; i++)
-            processes[i].Dispose();
+            processes[i]
+                .Dispose();
 
         if (_logger.IsEnabled(LogLevel.Information))
         {
