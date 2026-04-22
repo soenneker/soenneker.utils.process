@@ -1,7 +1,6 @@
 using Soenneker.Utils.Process.Abstract;
 using Soenneker.Utils.Process.Dtos;
-using Soenneker.Tests.FixturedUnit;
-using Xunit;
+using Soenneker.Tests.HostedUnit;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Threading;
@@ -10,17 +9,17 @@ using System.Runtime.InteropServices;
 
 namespace Soenneker.Utils.Process.Tests;
 
-[Collection("Collection")]
-public sealed class ProcessUtilTests : FixturedUnitTest
+[ClassDataSource<Host>(Shared = SharedType.PerTestSession)]
+public sealed class ProcessUtilTests : HostedUnitTest
 {
     private readonly IProcessUtil _util;
 
-    public ProcessUtilTests(Fixture fixture, ITestOutputHelper output) : base(fixture, output)
+    public ProcessUtilTests(Host host) : base(host)
     {
         _util = Resolve<IProcessUtil>(true);
     }
 
-    [Fact]
+    [Test]
     public async Task Start_ProcessCompletesSuccessfully_ReturnsOutput()
     {
         // Arrange
@@ -34,7 +33,7 @@ public sealed class ProcessUtilTests : FixturedUnitTest
         Assert.Contains("Hello, World!", output);
     }
 
-    [Fact]
+    [Test]
     public async Task Start_ProcessDoesNotWaitForExit_ReturnsImmediately()
     {
         // Arrange
@@ -76,7 +75,7 @@ public sealed class ProcessUtilTests : FixturedUnitTest
         }
     }
 
-    [Fact]
+    [Test]
     public async Task Start_ProcessIsCanceledBeforeCompletion_ThrowsTaskCanceledException()
     {
         string command = GetSleepCommand();
@@ -91,7 +90,7 @@ public sealed class ProcessUtilTests : FixturedUnitTest
         Assert.Equal(cts.Token, ex.CancellationToken);
     }
 
-    [Fact]
+    [Test]
     public async Task Start_ProcessWithArguments_ReturnsExpectedOutput()
     {
         // Arrange
@@ -105,7 +104,7 @@ public sealed class ProcessUtilTests : FixturedUnitTest
         Assert.Contains("Test Argument", output);
     }
 
-    [Fact]
+    [Test]
     public async Task StartDetached_CancellationTokenKillsProcess()
     {
         string command = GetSleepCommand();
