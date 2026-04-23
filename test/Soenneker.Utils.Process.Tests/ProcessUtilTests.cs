@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System;
 using System.Runtime.InteropServices;
+using AwesomeAssertions;
 
 namespace Soenneker.Utils.Process.Tests;
 
@@ -27,10 +28,10 @@ public sealed class ProcessUtilTests : HostedUnitTest
         string arguments = GetEchoArguments("Hello, World!");
 
         // Act
-        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: CancellationToken);
+        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: System.Threading.CancellationToken.None);
 
         // Assert
-        Assert.Contains("Hello, World!", output);
+        output.Should().Contain("Hello, World!");
     }
 
     [Test]
@@ -41,11 +42,11 @@ public sealed class ProcessUtilTests : HostedUnitTest
         string arguments = GetSleepArguments(5); // Sleep for 5 seconds
 
         // Act
-        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: false, log: false, cancellationToken: CancellationToken);
+        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: false, log: false, cancellationToken: System.Threading.CancellationToken.None);
 
         // Assert
         // Since we are not waiting for exit, output should be empty
-        Assert.Empty(output);
+        output.Should().BeEmpty();
     }
 
     private string GetSleepCommand()
@@ -87,7 +88,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
             _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: cts.Token).AsTask());
 
         // Optional: verify it was YOUR token
-        Assert.Equal(cts.Token, ex.CancellationToken);
+        ex.CancellationToken.Should().Be(cts.Token);
     }
 
     [Test]
@@ -98,10 +99,10 @@ public sealed class ProcessUtilTests : HostedUnitTest
         string arguments = GetEchoArguments("Test Argument");
 
         // Act
-        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: CancellationToken);
+        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: System.Threading.CancellationToken.None);
 
         // Assert
-        Assert.Contains("Test Argument", output);
+        output.Should().Contain("Test Argument");
     }
 
     [Test]
@@ -123,8 +124,8 @@ public sealed class ProcessUtilTests : HostedUnitTest
 
         using (process)
         {
-            await process.WaitForExitAsync(CancellationToken.None);
-            Assert.True(process.HasExited);
+            await process.WaitForExitAsync(System.Threading.CancellationToken.None);
+            process.HasExited.Should().BeTrue();
         }
     }
 
@@ -144,3 +145,4 @@ public sealed class ProcessUtilTests : HostedUnitTest
             return message;
     }
 }
+
