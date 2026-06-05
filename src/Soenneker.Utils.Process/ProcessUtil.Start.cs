@@ -12,6 +12,9 @@ using Soenneker.Utils.Process.Dtos;
 
 namespace Soenneker.Utils.Process;
 
+/// <summary>
+/// Represents the process util.
+/// </summary>
 public sealed partial class ProcessUtil
 {
     // No closure allocations: static handlers + per-process state table.
@@ -54,6 +57,19 @@ public sealed partial class ProcessUtil
             state.Logger.LogError("{Data}", e.Data);
     }
 
+    /// <summary>
+    /// Executes the start operation.
+    /// </summary>
+    /// <param name="fileName">The file name.</param>
+    /// <param name="workingDirectory">The working directory.</param>
+    /// <param name="arguments">The arguments.</param>
+    /// <param name="admin">The admin.</param>
+    /// <param name="waitForExit">The wait for exit.</param>
+    /// <param name="timeout">The timeout.</param>
+    /// <param name="log">The log.</param>
+    /// <param name="environmentalVars">The environmental vars.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<List<string>> Start(string fileName, string? workingDirectory = null, string? arguments = null, bool admin = false,
         bool waitForExit = true, TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null,
         CancellationToken cancellationToken = default)

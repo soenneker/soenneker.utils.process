@@ -10,6 +10,9 @@ using System.Threading.Tasks;
 
 namespace Soenneker.Utils.Process;
 
+/// <summary>
+/// Represents the process util.
+/// </summary>
 public sealed partial class ProcessUtil
 {
     private static readonly ConditionalWeakTable<System.Diagnostics.Process, DetachedProcessState> s_detachedStates = new();
@@ -42,6 +45,12 @@ public sealed partial class ProcessUtil
             state.Logger.LogError("{Data}", e.Data);
     }
 
+    /// <summary>
+    /// Executes the start detached operation.
+    /// </summary>
+    /// <param name="dto">The dto.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public ValueTask<System.Diagnostics.Process?> StartDetached(ProcessStartDto dto, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(dto);

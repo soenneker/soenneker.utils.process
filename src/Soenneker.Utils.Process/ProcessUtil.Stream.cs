@@ -12,6 +12,9 @@ using Soenneker.Extensions.ValueTask;
 
 namespace Soenneker.Utils.Process;
 
+/// <summary>
+/// Represents the process util.
+/// </summary>
 public sealed partial class ProcessUtil
 {
     /// <summary>

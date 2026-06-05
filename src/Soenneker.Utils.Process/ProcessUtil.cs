@@ -23,6 +23,12 @@ public sealed partial class ProcessUtil : IProcessUtil
         _logger = logger;
     }
 
+    /// <summary>
+    /// Executes the command exists operation.
+    /// </summary>
+    /// <param name="command">The command.</param>
+    /// <param name="ct">The ct.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<bool> CommandExists(string command, CancellationToken ct = default)
     {
         try
@@ -46,6 +52,14 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
+    /// <summary>
+    /// Executes the command exists and runs operation.
+    /// </summary>
+    /// <param name="command">The command.</param>
+    /// <param name="versionArgs">The version args.</param>
+    /// <param name="timeout">The timeout.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<bool> CommandExistsAndRuns(string command, string versionArgs = "--version", TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -68,6 +82,15 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
+    /// <summary>
+    /// Executes the start and get output operation.
+    /// </summary>
+    /// <param name="fileName">The file name.</param>
+    /// <param name="arguments">The arguments.</param>
+    /// <param name="workingDirectory">The working directory.</param>
+    /// <param name="timeout">The timeout.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -132,6 +155,19 @@ public sealed partial class ProcessUtil : IProcessUtil
         return stdOutTask.Result;
     }
 
+    /// <summary>
+    /// Executes the start if not running operation.
+    /// </summary>
+    /// <param name="name">The name.</param>
+    /// <param name="directory">The directory.</param>
+    /// <param name="arguments">The arguments.</param>
+    /// <param name="admin">The admin.</param>
+    /// <param name="waitForExit">The wait for exit.</param>
+    /// <param name="timeout">The timeout.</param>
+    /// <param name="log">The log.</param>
+    /// <param name="environmentalVars">The environmental vars.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,
         bool waitForExit = false, TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null,
         CancellationToken cancellationToken = default)
@@ -141,6 +177,13 @@ public sealed partial class ProcessUtil : IProcessUtil
             : Start(name, directory, arguments, admin, waitForExit, timeout, log, environmentalVars, cancellationToken);
     }
 
+    /// <summary>
+    /// Executes the kill by names operation.
+    /// </summary>
+    /// <param name="processNames">The process names.</param>
+    /// <param name="waitForExit">The wait for exit.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask KillByNames(IEnumerable<string> processNames, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         foreach (string name in processNames)
@@ -150,6 +193,13 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
+    /// <summary>
+    /// Executes the kill operation.
+    /// </summary>
+    /// <param name="name">The name.</param>
+    /// <param name="waitForExit">The wait for exit.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task Kill(string name, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         System.Diagnostics.Process[] processes = System.Diagnostics.Process.GetProcessesByName(name);
@@ -190,6 +240,13 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
+    /// <summary>
+    /// Executes the kill that start with operation.
+    /// </summary>
+    /// <param name="prefix">The prefix.</param>
+    /// <param name="waitForExit">The wait for exit.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask KillThatStartWith(string prefix, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         System.Diagnostics.Process[] total = System.Diagnostics.Process.GetProcesses();
@@ -222,6 +279,13 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
+    /// <summary>
+    /// Executes the kill operation.
+    /// </summary>
+    /// <param name="process">The process.</param>
+    /// <param name="waitForExit">The wait for exit.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public Task Kill(System.Diagnostics.Process process, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         try
@@ -241,6 +305,11 @@ public sealed partial class ProcessUtil : IProcessUtil
         return waitForExit ? process.WaitForExitAsync(cancellationToken) : Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Executes the is running operation.
+    /// </summary>
+    /// <param name="name">The name.</param>
+    /// <returns>A value indicating whether the operation succeeded.</returns>
     public bool IsRunning(string name)
     {
         System.Diagnostics.Process[] processes = System.Diagnostics.Process.GetProcessesByName(name);
@@ -258,6 +327,14 @@ public sealed partial class ProcessUtil : IProcessUtil
         return running;
     }
 
+    /// <summary>
+    /// Executes the bash run operation.
+    /// </summary>
+    /// <param name="command">The command.</param>
+    /// <param name="workingDir">The working dir.</param>
+    /// <param name="environmentalVars">The environmental vars.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask BashRun(string command, string workingDir, Dictionary<string, string>? environmentalVars = null,
         CancellationToken cancellationToken = default)
     {
@@ -352,6 +429,14 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
+    /// <summary>
+    /// Executes the cmd run operation.
+    /// </summary>
+    /// <param name="command">The command.</param>
+    /// <param name="workingDirectory">The working directory.</param>
+    /// <param name="environmentalVars">The environmental vars.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null,
         CancellationToken cancellationToken = default)
     {

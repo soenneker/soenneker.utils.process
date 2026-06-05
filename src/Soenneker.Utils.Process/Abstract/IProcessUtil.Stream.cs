@@ -4,6 +4,9 @@ using System.Threading;
 
 namespace Soenneker.Utils.Process.Abstract;
 
+/// <summary>
+/// Defines the process util contract.
+/// </summary>
 public partial interface IProcessUtil
 {
     /// <summary>
