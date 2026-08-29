@@ -46,6 +46,7 @@ public partial interface IProcessUtil
     /// <param name="processNames">A collection of process names (without extension) to terminate.</param>
     /// <param name="waitForExit">If true, waits for each process to exit after it is killed.</param>
     /// <param name="cancellationToken">A token to cancel waiting for process exit.</param>
+    /// <returns>Attempts to kill all processes whose names exactly match any of the given names.</returns>
     ValueTask KillByNames(IEnumerable<string> processNames, bool waitForExit = false, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -54,6 +55,7 @@ public partial interface IProcessUtil
     /// <param name="name">The process name (without extension) to kill.</param>
     /// <param name="waitForExit">If true, waits for the killed process to exit.</param>
     /// <param name="cancellationToken">A token to cancel waiting for process exit.</param>
+    /// <returns>Kills the first process found whose name exactly matches <paramref name="name"/>.</returns>
     Task Kill(string name, bool waitForExit = false, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -62,6 +64,7 @@ public partial interface IProcessUtil
     /// <param name="startsWith">The prefix to match against running process names.</param>
     /// <param name="waitForExit">If true, waits for each killed process to exit.</param>
     /// <param name="cancellationToken">A token to cancel waiting for process exit.</param>
+    /// <returns>Kills all running processes whose process name (without extension) starts with the specified prefix.</returns>
     ValueTask KillThatStartWith(string startsWith, bool waitForExit = false, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -70,6 +73,7 @@ public partial interface IProcessUtil
     /// <param name="process">The process instance to terminate.</param>
     /// <param name="waitForExit">If true, waits for the process to exit after killing it.</param>
     /// <param name="cancellationToken">A token to cancel waiting for process exit.</param>
+    /// <returns>Kills the specified <see cref="System.Diagnostics.Process"/> instance.</returns>
     Task Kill(System.Diagnostics.Process process, bool waitForExit = false, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -106,14 +110,14 @@ public partial interface IProcessUtil
     ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Starts a process with the specified parameters and asynchronously retrieves its standard output as a string.
+    /// Starts a process, captures standard output and error, and enforces an optional timeout.
     /// </summary>
-    /// <param name="fileName">The name or path of the executable file to start. If not specified, an empty string is used.</param>
-    /// <param name="arguments">The command-line arguments to pass to the executable. If not specified, an empty string is used.</param>
-    /// <param name="workingDirectory">The directory in which to start the process. If not specified, the current working directory is used.</param>
-    /// <param name="timeout">The maximum duration to wait for the process to complete. If null, the operation waits indefinitely.</param>
-    /// <param name="cancellationToken">A token that can be used to cancel the operation. The default value is <see cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the standard output of the process as a string.</returns>
+    /// <param name="fileName">The executable or command.</param>
+    /// <param name="arguments">Arguments passed without shell interpretation.</param>
+    /// <param name="workingDirectory">The process working directory, or null to inherit it.</param>
+    /// <param name="timeout">The maximum allowed execution time.</param>
+    /// <param name="cancellationToken">Signals that the operation should stop.</param>
+    /// <returns>Captured standard output and error.</returns>
     ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", TimeSpan? timeout = null,
         CancellationToken cancellationToken = default);
 
@@ -126,13 +130,13 @@ public partial interface IProcessUtil
     ValueTask<bool> CommandExists(string command, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Determines whether the specified command exists on the system and can be executed successfully.
+    /// Checks whether a command starts and exits successfully with the supplied version arguments.
     /// </summary>
-    /// <param name="command">The name of the command-line executable to check for existence and execution capability.</param>
-    /// <param name="versionArgs">The arguments to pass to the command to verify its execution, typically used to retrieve version information.</param>
-    /// <param name="timeout">The maximum duration to wait for the command to execute before timing out.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result is <see langword="true"/> if the command exists and runs successfully; otherwise, <see langword="false"/>.</returns>
+    /// <param name="command">The command to probe.</param>
+    /// <param name="versionArgs">Arguments that make the command report its version.</param>
+    /// <param name="timeout">The maximum allowed execution time.</param>
+    /// <param name="cancellationToken">Signals that the operation should stop.</param>
+    /// <returns>True when the command starts and succeeds.</returns>
     ValueTask<bool> CommandExistsAndRuns(string command, string versionArgs = "--version", TimeSpan? timeout = null,
         CancellationToken cancellationToken = default);
 }

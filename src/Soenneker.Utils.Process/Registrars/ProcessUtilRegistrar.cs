@@ -12,6 +12,7 @@ public static class ProcessUtilRegistrar
     /// <summary>
     /// Adds <see cref="IProcessUtil"/> as a scoped service. (Recommended) <para/>
     /// </summary>
+    /// <returns>Adds <see cref="IProcessUtil"/> as a scoped service. (Recommended) <para/>.</returns>
     public static IServiceCollection AddProcessUtilAsScoped(this IServiceCollection services)
     {
         services.TryAddScoped<IProcessUtil, ProcessUtil>();
@@ -23,6 +24,7 @@ public static class ProcessUtilRegistrar
     /// Adds <see cref="IProcessUtil"/> as a singleton service. <para/>
     /// (Use <see cref="AddProcessUtilAsScoped"/> unless this is being consumed by a Singleton)
     /// </summary>
+    /// <returns>Adds <see cref="IProcessUtil"/> as a singleton service. <para/> (Use <see cref="AddProcessUtilAsScoped"/> unless this is being consumed by a Singleton).</returns>
     public static IServiceCollection AddProcessUtilAsSingleton(this IServiceCollection services)
     {
         services.TryAddSingleton<IProcessUtil, ProcessUtil>();

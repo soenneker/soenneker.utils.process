@@ -13,6 +13,7 @@ public partial interface IProcessUtil
     /// Runs <paramref name="fileName"/> and produces every line it writes.
     /// When both stdout and stderr are redirected they are merged in order of arrival.
     /// </summary>
+    /// <returns>Runs <paramref name="fileName"/> and produces every line it writes. When both stdout and stderr are redirected they are merged in order of arrival.</returns>
     IAsyncEnumerable<string> StreamLines(string fileName, string? workingDirectory = null, string? arguments = null,
         bool redirectOutput = true, bool redirectError = true, IDictionary<string, string>? environmentVariables = null, ILogger? logger = null,
         CancellationToken cancellationToken = default);
