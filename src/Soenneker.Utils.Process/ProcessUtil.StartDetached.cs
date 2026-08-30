@@ -25,7 +25,14 @@ public sealed partial class ProcessUtil
         if (sender is not System.Diagnostics.Process process || !s_detachedStates.TryGetValue(process, out DetachedProcessState? state))
             return;
 
-        state.OutputCallback?.Invoke(e.Data);
+        try
+        {
+            state.OutputCallback?.Invoke(e.Data);
+        }
+        catch (Exception ex)
+        {
+            state.Logger.LogError(ex, "Detached process output callback failed");
+        }
 
         if (state.Log && state.Logger.IsEnabled(LogLevel.Information))
             state.Logger.LogInformation("{Data}", e.Data);
@@ -39,7 +46,14 @@ public sealed partial class ProcessUtil
         if (sender is not System.Diagnostics.Process process || !s_detachedStates.TryGetValue(process, out DetachedProcessState? state))
             return;
 
-        state.ErrorCallback?.Invoke(e.Data);
+        try
+        {
+            state.ErrorCallback?.Invoke(e.Data);
+        }
+        catch (Exception ex)
+        {
+            state.Logger.LogError(ex, "Detached process error callback failed");
+        }
 
         if (state.Log && state.Logger.IsEnabled(LogLevel.Error))
             state.Logger.LogError("{Data}", e.Data);
@@ -53,6 +67,7 @@ public sealed partial class ProcessUtil
     /// <returns>A task containing the result of the operation.</returns>
     public ValueTask<System.Diagnostics.Process?> StartDetached(ProcessStartDto dto, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(dto);
         ArgumentException.ThrowIfNullOrWhiteSpace(dto.FileName);
 
@@ -130,14 +145,7 @@ public sealed partial class ProcessUtil
                 {
                     var proc = (System.Diagnostics.Process)state!;
 
-                    try
-                    {
-                        if (!proc.HasExited)
-                            proc.Kill(entireProcessTree: true);
-                    }
-                    catch
-                    {
-                    }
+                    TryKillProcessTree(proc);
                 }, process);
 
                 process.Exited += (_, _) =>

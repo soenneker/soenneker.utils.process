@@ -11,7 +11,6 @@ using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Utils.Process;
 
-/// <inheritdoc cref="IProcessUtil"/>
 public sealed partial class ProcessUtil : IProcessUtil
 {
     private readonly ILogger<ProcessUtil> _logger;
@@ -46,6 +45,10 @@ public sealed partial class ProcessUtil : IProcessUtil
 
             return true;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch
         {
             return false;
@@ -75,6 +78,10 @@ public sealed partial class ProcessUtil : IProcessUtil
                 .NoSync();
 
             return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
@@ -132,21 +139,20 @@ public sealed partial class ProcessUtil : IProcessUtil
         await using CancellationTokenRegistration reg = linkedCts.Token.Register(static state =>
         {
             var p = (System.Diagnostics.Process)state!;
-            try
-            {
-                if (!p.HasExited)
-                    p.Kill(entireProcessTree: true);
-            }
-            catch
-            {
-            }
+            TryKillProcessTree(p);
         }, process);
 
         Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(linkedCts.Token);
         Task<string> stdErrTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
 
-        await Task.WhenAll(stdOutTask, stdErrTask, process.WaitForExitAsync(linkedCts.Token))
-                  .NoSync();
+        try
+        {
+            await Task.WhenAll(stdOutTask, stdErrTask, process.WaitForExitAsync(linkedCts.Token)).NoSync();
+        }
+        catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
+        {
+            throw new TimeoutException($"Process '{fileName}' did not exit within {timeout!.Value.TotalMilliseconds} ms.");
+        }
 
         if (process.ExitCode != 0)
             throw new InvalidOperationException($"'{fileName} {arguments}' exited with {process.ExitCode}" +
@@ -407,6 +413,11 @@ public sealed partial class ProcessUtil : IProcessUtil
             if (proc.ExitCode != 0)
                 throw new InvalidOperationException($"Run failed with exit code {proc.ExitCode} for command: {command}");
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            TryKillProcessTree(proc);
+            throw;
+        }
         finally
         {
             proc.OutputDataReceived -= outHandler;
@@ -509,6 +520,11 @@ public sealed partial class ProcessUtil : IProcessUtil
             if (proc.ExitCode != 0)
                 throw new InvalidOperationException($"CMD '{command}' exited with code {proc.ExitCode}.");
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            TryKillProcessTree(proc);
+            throw;
+        }
         finally
         {
             proc.OutputDataReceived -= outHandler;
@@ -528,6 +544,19 @@ public sealed partial class ProcessUtil : IProcessUtil
             catch (InvalidOperationException)
             {
             }
+        }
+    }
+
+    private static void TryKillProcessTree(System.Diagnostics.Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // Best-effort cleanup during cancellation or early termination.
         }
     }
 }

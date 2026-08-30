@@ -53,19 +53,7 @@ public sealed partial class ProcessUtil
 
         // Kill the whole tree if the token is canceled or the enumerator is disposed early.
         await using CancellationTokenRegistration killRegistration = cancellationToken.Register(static p =>
-        {
-            if (p is System.Diagnostics.Process {HasExited: false} proc)
-            {
-                try
-                {
-                    proc.Kill(entireProcessTree: true);
-                }
-                catch
-                {
-                    /* ignored */
-                }
-            }
-        }, process);
+            TryKillProcessTree((System.Diagnostics.Process)p!), process);
 
         var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
         {
@@ -98,17 +86,7 @@ public sealed partial class ProcessUtil
         finally
         {
             // If the enumerator is disposed early (caller stops enumerating), ensure the process doesn't keep running.
-            if (!process.HasExited)
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch
-                {
-                    /* ignored */
-                }
-            }
+            TryKillProcessTree(process);
         }
 
         await process.WaitForExitAsync(cancellationToken).NoSync();

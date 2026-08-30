@@ -78,8 +78,8 @@ public sealed partial class ProcessUtil
         {
             FileName = fileName,
             Arguments = arguments ?? string.Empty,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
+            RedirectStandardOutput = waitForExit,
+            RedirectStandardError = waitForExit,
             UseShellExecute = false,
             CreateNoWindow = true,
             StandardOutputEncoding = System.Text.Encoding.UTF8,
@@ -211,6 +211,8 @@ public sealed partial class ProcessUtil
         }
         catch (OperationCanceledException)
         {
+            TryKillProcessTree(process);
+
             if (log && _logger.IsEnabled(LogLevel.Warning))
                 _logger.LogWarning("Process '{Name}' was canceled.", fileName);
             throw;
