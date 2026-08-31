@@ -4,7 +4,7 @@
 [![](https://img.shields.io/github/actions/workflow/status/soenneker/soenneker.utils.process/codeql.yml?label=CodeQL&style=for-the-badge)](https://github.com/soenneker/soenneker.utils.process/actions/workflows/codeql.yml)
 
 # ![](https://user-images.githubusercontent.com/4441470/224455560-91ed3ee7-f510-4041-a8d2-3fc093025112.png) Soenneker.Utils.Process
-A utility library implementing useful process operations.
+Starts, captures, streams, probes, and terminates operating-system processes, with explicit shell-command helpers when shell syntax is required.
 
 ## Installation
 
@@ -19,8 +19,6 @@ using Soenneker.Utils.Process.Registrars;
 
 services.AddProcessUtilAsSingleton();
 ```
-
-## Common operations
 
 ## Start and capture a process
 
