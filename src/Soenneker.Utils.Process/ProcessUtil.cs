@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
+using Soenneker.Extensions.CancellationTokens;
 using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Utils.Process;
@@ -104,7 +105,8 @@ public sealed partial class ProcessUtil : IProcessUtil
         _logger.LogInformation("🟢 Starting: {file} {args} (in {cwd})", fileName, arguments, workingDirectory);
 
         using CancellationTokenSource? timeoutCts = timeout.HasValue ? new CancellationTokenSource(timeout.Value) : null;
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts?.Token ?? CancellationToken.None);
+        CancellationToken linkedToken = cancellationToken.Link(timeoutCts?.Token ?? CancellationToken.None, out CancellationTokenSource? linkedCts);
+        using var linkedCtsScope = linkedCts;
 
         var psi = new ProcessStartInfo
         {
@@ -136,18 +138,18 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
 
         // Kill on cancel/timeout (dispose registration before process is disposed)
-        await using CancellationTokenRegistration reg = linkedCts.Token.Register(static state =>
+        await using CancellationTokenRegistration reg = linkedToken.Register(static state =>
         {
             var p = (System.Diagnostics.Process)state!;
             TryKillProcessTree(p);
         }, process);
 
-        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(linkedCts.Token);
-        Task<string> stdErrTask = process.StandardError.ReadToEndAsync(linkedCts.Token);
+        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(linkedToken);
+        Task<string> stdErrTask = process.StandardError.ReadToEndAsync(linkedToken);
 
         try
         {
-            await Task.WhenAll(stdOutTask, stdErrTask, process.WaitForExitAsync(linkedCts.Token)).NoSync();
+            await Task.WhenAll(stdOutTask, stdErrTask, process.WaitForExitAsync(linkedToken)).NoSync();
         }
         catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
         {
