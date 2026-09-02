@@ -21,28 +21,28 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task Start_ProcessCompletesSuccessfully_ReturnsOutput()
+    public async Task Start_ProcessCompletesSuccessfully_ReturnsOutput(CancellationToken cancellationToken)
     {
         // Arrange
         string command = GetEchoCommand();
         string arguments = GetEchoArguments("Hello, World!");
 
         // Act
-        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: System.Threading.CancellationToken.None);
+        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: cancellationToken);
 
         // Assert
         output.Should().Contain("Hello, World!");
     }
 
     [Test]
-    public async Task Start_ProcessDoesNotWaitForExit_ReturnsImmediately()
+    public async Task Start_ProcessDoesNotWaitForExit_ReturnsImmediately(CancellationToken cancellationToken)
     {
         // Arrange
         string command = GetSleepCommand();
         string arguments = GetSleepArguments(5); // Sleep for 5 seconds
 
         // Act
-        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: false, log: false, cancellationToken: System.Threading.CancellationToken.None);
+        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: false, log: false, cancellationToken: cancellationToken);
 
         // Assert
         // Since we are not waiting for exit, output should be empty
@@ -92,14 +92,14 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task Start_ProcessWithArguments_ReturnsExpectedOutput()
+    public async Task Start_ProcessWithArguments_ReturnsExpectedOutput(CancellationToken cancellationToken)
     {
         // Arrange
         string command = GetEchoCommand();
         string arguments = GetEchoArguments("Test Argument");
 
         // Act
-        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: System.Threading.CancellationToken.None);
+        List<string> output = await _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: cancellationToken);
 
         // Assert
         output.Should().Contain("Test Argument");
