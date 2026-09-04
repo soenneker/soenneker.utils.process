@@ -88,7 +88,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
             _util.Start(fileName: command, arguments: arguments, waitForExit: true, log: false, cancellationToken: cts.Token).AsTask());
 
         // Optional: verify it was YOUR token
-        ex.CancellationToken.Should().Be(cts.Token);
+        ex!.CancellationToken.Should().Be(cts.Token);
     }
 
     [Test]

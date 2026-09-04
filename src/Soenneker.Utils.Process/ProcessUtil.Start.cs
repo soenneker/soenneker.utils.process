@@ -81,10 +81,14 @@ public sealed partial class ProcessUtil
             RedirectStandardOutput = waitForExit,
             RedirectStandardError = waitForExit,
             UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardOutputEncoding = System.Text.Encoding.UTF8,
-            StandardErrorEncoding = System.Text.Encoding.UTF8
+            CreateNoWindow = true
         };
+
+        if (psi.RedirectStandardOutput)
+            psi.StandardOutputEncoding = System.Text.Encoding.UTF8;
+
+        if (psi.RedirectStandardError)
+            psi.StandardErrorEncoding = System.Text.Encoding.UTF8;
 
         if (environmentalVars is { Count: > 0 })
         {
