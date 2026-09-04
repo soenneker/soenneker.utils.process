@@ -35,7 +35,7 @@ public sealed partial class ProcessUtil
         }
 
         if (state.Log && state.Logger.IsEnabled(LogLevel.Information))
-            state.Logger.LogInformation("{Data}", e.Data);
+            LogInformationData(state.Logger, e.Data);
     }
 
     private static void DetachedStderrHandler(object? sender, DataReceivedEventArgs e)
@@ -56,7 +56,7 @@ public sealed partial class ProcessUtil
         }
 
         if (state.Log && state.Logger.IsEnabled(LogLevel.Error))
-            state.Logger.LogError("{Data}", e.Data);
+            LogErrorData(state.Logger, e.Data);
     }
 
     /// <summary>

@@ -7,7 +7,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.Task;
 using Soenneker.Extensions.ValueTask;
-using Soenneker.Extensions.CancellationTokens;
 using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Utils.Process;
@@ -17,7 +16,7 @@ public sealed partial class ProcessUtil : IProcessUtil
 {
     private readonly ILogger<ProcessUtil> _logger;
 
-    private bool _isWindows => RuntimeUtil.IsWindows();
+    private readonly bool _isWindows = RuntimeUtil.IsWindows();
 
     public ProcessUtil(ILogger<ProcessUtil> logger)
     {
@@ -105,10 +104,6 @@ public sealed partial class ProcessUtil : IProcessUtil
     {
         _logger.LogInformation("🟢 Starting: {file} {args} (in {cwd})", fileName, arguments, workingDirectory);
 
-        using CancellationTokenSource? timeoutCts = timeout.HasValue ? new CancellationTokenSource(timeout.Value) : null;
-        CancellationToken linkedToken = cancellationToken.Link(timeoutCts?.Token ?? CancellationToken.None, out CancellationTokenSource? linkedCts);
-        using var linkedCtsScope = linkedCts;
-
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
@@ -138,23 +133,27 @@ public sealed partial class ProcessUtil : IProcessUtil
         {
         }
 
-        // Kill on cancel/timeout (dispose registration before process is disposed)
-        await using CancellationTokenRegistration reg = linkedToken.Register(static state =>
-        {
-            var p = (System.Diagnostics.Process)state!;
-            TryKillProcessTree(p);
-        }, process);
-
-        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(linkedToken);
-        Task<string> stdErrTask = process.StandardError.ReadToEndAsync(linkedToken);
+        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        Task<string> stdErrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        Task completion = WaitForExitAndDrain(process, stdOutTask, stdErrTask, cancellationToken);
 
         try
         {
-            await Task.WhenAll(stdOutTask, stdErrTask, process.WaitForExitAsync(linkedToken)).NoSync();
+            if (timeout.HasValue)
+                await completion.WaitAsync(timeout.Value, cancellationToken).NoSync();
+            else
+                await completion.NoSync();
         }
-        catch (OperationCanceledException) when (timeoutCts?.IsCancellationRequested == true && !cancellationToken.IsCancellationRequested)
+        catch (TimeoutException)
         {
+            TryKillProcessTree(process);
+            await ObserveCompletion(completion).NoSync();
             throw new TimeoutException($"Process '{fileName}' did not exit within {timeout!.Value.TotalMilliseconds} ms.");
+        }
+        catch (OperationCanceledException)
+        {
+            TryKillProcessTree(process);
+            throw;
         }
 
         if (process.ExitCode != 0)
@@ -383,7 +382,7 @@ public sealed partial class ProcessUtil : IProcessUtil
                 return;
             }
 
-            _logger.LogInformation("[stdout] {line}", e.Data);
+            LogStandardOutput(_logger, e.Data);
         };
 
         DataReceivedEventHandler errHandler = (_, e) =>
@@ -394,7 +393,7 @@ public sealed partial class ProcessUtil : IProcessUtil
                 return;
             }
 
-            _logger.LogWarning("[stderr] {line}", e.Data);
+            LogStandardError(_logger, e.Data);
         };
 
         proc.OutputDataReceived += outHandler;
@@ -490,7 +489,7 @@ public sealed partial class ProcessUtil : IProcessUtil
                 return;
             }
 
-            _logger.LogInformation("{Line}", e.Data);
+            LogInformationLine(_logger, e.Data);
         };
 
         DataReceivedEventHandler errHandler = (_, e) =>
@@ -501,7 +500,7 @@ public sealed partial class ProcessUtil : IProcessUtil
                 return;
             }
 
-            _logger.LogError("{Line}", e.Data);
+            LogErrorLine(_logger, e.Data);
         };
 
         proc.OutputDataReceived += outHandler;

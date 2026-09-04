@@ -106,6 +106,88 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
+    public async Task Start_CapturesStandardErrorWithoutLosingStandardOutput(CancellationToken cancellationToken)
+    {
+        string command;
+        string arguments;
+
+        if (OperatingSystem.IsWindows())
+        {
+            command = "cmd.exe";
+            arguments = "/d /c \"echo standard&echo failure>&2\"";
+        }
+        else
+        {
+            command = "/bin/sh";
+            arguments = "-c \"echo standard; echo failure >&2\"";
+        }
+
+        List<string> output = await _util.Start(command, arguments: arguments, log: false, cancellationToken: cancellationToken);
+
+        output.Should().Contain("standard");
+        output.Should().Contain("ERROR: failure");
+    }
+
+    [Test]
+    public async Task StartAndWait_DrainsLargeOutput(CancellationToken cancellationToken)
+    {
+        string command;
+        string arguments;
+
+        if (OperatingSystem.IsWindows())
+        {
+            command = "cmd.exe";
+            arguments = "/d /c \"for /L %i in (1,1,2000) do @echo line\"";
+        }
+        else
+        {
+            command = "/bin/sh";
+            arguments = "-c \"i=0; while [ $i -lt 2000 ]; do echo line; i=$((i+1)); done\"";
+        }
+
+        await _util.StartAndWait(command, arguments: arguments, log: false, cancellationToken: cancellationToken);
+    }
+
+    [Test]
+    public async Task StartAndWait_TimeoutKillsProcess()
+    {
+        string command = GetSleepCommand();
+        string arguments = GetSleepArguments(10);
+
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            _util.StartAndWait(command, arguments: arguments, timeout: TimeSpan.FromMilliseconds(100), log: false).AsTask());
+    }
+
+    [Test]
+    public async Task StartAndGetOutput_ReturnsStandardOutput(CancellationToken cancellationToken)
+    {
+        string output = await _util.StartAndGetOutput(GetEchoCommand(), GetEchoArguments("whole output"), cancellationToken: cancellationToken);
+
+        output.Should().Contain("whole output");
+    }
+
+    [Test]
+    public async Task StartAndGetOutput_TimeoutKillsProcess()
+    {
+        await Assert.ThrowsAsync<TimeoutException>(() =>
+            _util.StartAndGetOutput(GetSleepCommand(), GetSleepArguments(10), timeout: TimeSpan.FromMilliseconds(100)).AsTask());
+    }
+
+    [Test]
+    public async Task StreamLines_ReturnsStandardOutput(CancellationToken cancellationToken)
+    {
+        var lines = new List<string>();
+
+        await foreach (string line in _util.StreamLines(GetEchoCommand(), arguments: GetEchoArguments("streamed"),
+                           cancellationToken: cancellationToken))
+        {
+            lines.Add(line);
+        }
+
+        lines.Should().Contain("streamed");
+    }
+
+    [Test]
     public async Task StartDetached_CancellationTokenKillsProcess()
     {
         string command = GetSleepCommand();

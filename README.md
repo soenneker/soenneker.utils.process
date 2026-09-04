@@ -37,13 +37,22 @@ string stdout = await processUtil.StartAndGetOutput(
     repositoryPath,
     TimeSpan.FromSeconds(10),
     cancellationToken);
+
+// Drains output without retaining it when only success or failure matters.
+await processUtil.StartAndWait(
+    "git",
+    repositoryPath,
+    "fetch --prune",
+    timeout: TimeSpan.FromSeconds(30),
+    cancellationToken: cancellationToken);
 ```
 
 These methods launch the executable directly with `UseShellExecute = false`; pipes, redirection,
 globs, and shell operators are not interpreted. `Start` returns stdout lines and prefixes stderr
 lines with `ERROR: `. A nonzero exit, start failure, or capture failure throws
 `InvalidOperationException`. `StartAndGetOutput` returns stdout as one string and includes stderr
-only in its nonzero-exit exception.
+only in its nonzero-exit exception. `StartAndWait` drains both streams without creating output
+strings or a result collection, making it preferable for commands whose output is not consumed.
 
 Timeout and requested cancellation kill the process tree on a best-effort basis. `Start` only
 captures output when `waitForExit: true`; with `false` it returns an empty list after launching and

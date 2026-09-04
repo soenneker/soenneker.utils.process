@@ -52,7 +52,7 @@ public sealed partial class ProcessUtil
             throw new InvalidOperationException($"Failed to start process \"{fileName}\".");
 
         // Kill the whole tree if the token is canceled or the enumerator is disposed early.
-        await using CancellationTokenRegistration killRegistration = cancellationToken.Register(static p =>
+        using CancellationTokenRegistration killRegistration = cancellationToken.Register(static p =>
             TryKillProcessTree((System.Diagnostics.Process)p!), process);
 
         var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
@@ -69,10 +69,7 @@ public sealed partial class ProcessUtil
         if (redirectError)
             stderrTask = PumpAsync(process.StandardError, channel.Writer, logger, isError: true, cancellationToken);
 
-        // Close the writer once *both* pumps finish.
-        Task closeWriterTask = Task.WhenAll(stdoutTask, stderrTask)
-                                   .ContinueWith(static (_, state) => ((ChannelWriter<string>)state!).TryComplete(), channel.Writer, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously,
-                                       TaskScheduler.Default);
+        Task closeWriterTask = CompleteWriter(stdoutTask, stderrTask, channel.Writer);
 
         try
         {
@@ -90,7 +87,7 @@ public sealed partial class ProcessUtil
         }
 
         await process.WaitForExitAsync(cancellationToken).NoSync();
-        await Task.WhenAll(stdoutTask, stderrTask, closeWriterTask).NoSync();
+        await closeWriterTask.NoSync();
 
         if (process.ExitCode != 0 && !cancellationToken.IsCancellationRequested)
             throw new InvalidOperationException($"Process \"{fileName}\" exited with code {process.ExitCode}.");
@@ -101,8 +98,6 @@ public sealed partial class ProcessUtil
     /// </summary>
     private static async Task PumpAsync(StreamReader reader, ChannelWriter<string> writer, ILogger? logger, bool isError, CancellationToken cancellationToken)
     {
-        LogLevel logLevel = isError ? LogLevel.Warning : LogLevel.Information;
-
         try
         {
             while (true)
@@ -114,13 +109,45 @@ public sealed partial class ProcessUtil
 
                 // Avoid allocating when stdout: payload is the original line instance.
                 string payload = isError ? string.Concat("[stderr] ", line) : line;
-                logger?.Log(logLevel, "{Line}", payload);
-                await writer.WriteAsync(payload, cancellationToken).NoSync();
+                if (logger is not null)
+                {
+                    if (isError)
+                        LogWarningLine(logger, payload);
+                    else
+                        LogInformationLine(logger, payload);
+                }
+
+                writer.TryWrite(payload);
             }
         }
         catch (OperationCanceledException)
         {
             // Cancellation is handled by the outer method.
         }
+    }
+
+    private static async Task CompleteWriter(Task stdoutTask, Task stderrTask, ChannelWriter<string> writer)
+    {
+        Exception? error = null;
+
+        try
+        {
+            await stdoutTask.NoSync();
+        }
+        catch (Exception ex)
+        {
+            error = ex;
+        }
+
+        try
+        {
+            await stderrTask.NoSync();
+        }
+        catch (Exception ex)
+        {
+            error ??= ex;
+        }
+
+        writer.TryComplete(error);
     }
 }

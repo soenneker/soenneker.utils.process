@@ -45,4 +45,22 @@ public partial interface IProcessUtil
     /// </exception>
     ValueTask<List<string>> Start(string fileName, string? workingDirectory = null, string? arguments = null, bool admin = false, bool waitForExit = true,
         TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Starts a process, waits for it to exit, and drains its output without retaining it in memory.
+    /// </summary>
+    /// <param name="fileName">The executable name or full path.</param>
+    /// <param name="workingDirectory">The process working directory, or <see langword="null"/> to inherit the current directory.</param>
+    /// <param name="arguments">Arguments passed to the process without shell interpretation.</param>
+    /// <param name="admin">Whether to request elevation on Windows.</param>
+    /// <param name="timeout">The maximum execution time, or <see langword="null"/> to wait indefinitely.</param>
+    /// <param name="log">Whether process failures and cancellation should be logged.</param>
+    /// <param name="environmentalVars">Optional environment variables to add to the child process.</param>
+    /// <param name="cancellationToken">A token that cancels the wait and kills the process tree.</param>
+    /// <returns>A task that completes after the process and redirected streams have finished.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the process cannot start or exits unsuccessfully.</exception>
+    /// <exception cref="TimeoutException">Thrown when the process exceeds <paramref name="timeout"/>.</exception>
+    /// <exception cref="OperationCanceledException">Thrown when <paramref name="cancellationToken"/> is canceled.</exception>
+    ValueTask StartAndWait(string fileName, string? workingDirectory = null, string? arguments = null, bool admin = false, TimeSpan? timeout = null,
+        bool log = true, Dictionary<string, string>? environmentalVars = null, CancellationToken cancellationToken = default);
 }
