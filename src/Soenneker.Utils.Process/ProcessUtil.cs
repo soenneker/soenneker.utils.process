@@ -12,6 +12,7 @@ using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Utils.Process;
 
+/// <inheritdoc cref="IProcessUtil" />
 public sealed partial class ProcessUtil : IProcessUtil
 {
     private readonly ILogger<ProcessUtil> _logger;
