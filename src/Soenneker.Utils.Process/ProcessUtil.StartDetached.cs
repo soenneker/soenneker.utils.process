@@ -59,12 +59,6 @@ public sealed partial class ProcessUtil
             LogErrorData(state.Logger, e.Data);
     }
 
-    /// <summary>
-    /// Executes the start detached operation.
-    /// </summary>
-    /// <param name="dto">The dto.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public ValueTask<System.Diagnostics.Process?> StartDetached(ProcessStartDto dto, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -139,26 +133,20 @@ public sealed partial class ProcessUtil
             if (psi.RedirectStandardError)
                 process.BeginErrorReadLine();
 
+            CancellationTokenRegistration registration = default;
             if (cancellationToken.CanBeCanceled)
             {
-                CancellationTokenRegistration registration = cancellationToken.Register(static state =>
+                registration = cancellationToken.Register(static state =>
                 {
                     var proc = (System.Diagnostics.Process)state!;
 
                     TryKillProcessTree(proc);
                 }, process);
-
-                process.Exited += (_, _) =>
-                {
-                    registration.Dispose();
-                    CleanupDetached(process, psi);
-                };
-            }
-            else
-            {
-                process.Exited += (_, _) => CleanupDetached(process, psi);
             }
 
+            // Exited can fire before redirected output reaches EOF, or even before a handler is attached.
+            // WaitForExitAsync handles both cases and lets callers await complete callback delivery.
+            _ = CleanupDetachedAfterExit(process, psi, registration);
             return ValueTask.FromResult<System.Diagnostics.Process?>(process);
         }
         catch (Exception ex)
@@ -170,6 +158,24 @@ public sealed partial class ProcessUtil
                 _logger.LogError(ex, "Error starting process '{FileName}' with arguments '{Arguments}'", dto.FileName, psi.Arguments);
 
             return ValueTask.FromResult<System.Diagnostics.Process?>(null);
+        }
+    }
+
+    private static async Task CleanupDetachedAfterExit(System.Diagnostics.Process process, ProcessStartInfo psi,
+        CancellationTokenRegistration registration)
+    {
+        try
+        {
+            await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException)
+        {
+            // The caller may dispose the process before it exits.
+        }
+        finally
+        {
+            registration.Dispose();
+            CleanupDetached(process, psi);
         }
     }
 
