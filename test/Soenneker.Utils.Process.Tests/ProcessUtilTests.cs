@@ -21,7 +21,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task Start_ProcessCompletesSuccessfully_ReturnsOutput(CancellationToken cancellationToken)
+    public async ValueTask Start_ProcessCompletesSuccessfully_ReturnsOutput(CancellationToken cancellationToken)
     {
         // Arrange
         string command = GetEchoCommand();
@@ -35,7 +35,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task Start_ProcessDoesNotWaitForExit_ReturnsImmediately(CancellationToken cancellationToken)
+    public async ValueTask Start_ProcessDoesNotWaitForExit_ReturnsImmediately(CancellationToken cancellationToken)
     {
         // Arrange
         string command = GetSleepCommand();
@@ -77,7 +77,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task Start_ProcessIsCanceledBeforeCompletion_ThrowsTaskCanceledException()
+    public async ValueTask Start_ProcessIsCanceledBeforeCompletion_ThrowsTaskCanceledException()
     {
         string command = GetSleepCommand();
         string arguments = GetSleepArguments(10);
@@ -92,7 +92,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task Start_ProcessWithArguments_ReturnsExpectedOutput(CancellationToken cancellationToken)
+    public async ValueTask Start_ProcessWithArguments_ReturnsExpectedOutput(CancellationToken cancellationToken)
     {
         // Arrange
         string command = GetEchoCommand();
@@ -106,7 +106,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task Start_CapturesStandardErrorWithoutLosingStandardOutput(CancellationToken cancellationToken)
+    public async ValueTask Start_CapturesStandardErrorWithoutLosingStandardOutput(CancellationToken cancellationToken)
     {
         string command;
         string arguments;
@@ -129,7 +129,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task StartAndWait_DrainsLargeOutput(CancellationToken cancellationToken)
+    public async ValueTask StartAndWait_DrainsLargeOutput(CancellationToken cancellationToken)
     {
         string command;
         string arguments;
@@ -149,7 +149,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task StartAndWait_TimeoutKillsProcess()
+    public async ValueTask StartAndWait_TimeoutKillsProcess()
     {
         string command = GetSleepCommand();
         string arguments = GetSleepArguments(10);
@@ -159,7 +159,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task StartAndGetOutput_ReturnsStandardOutput(CancellationToken cancellationToken)
+    public async ValueTask StartAndGetOutput_ReturnsStandardOutput(CancellationToken cancellationToken)
     {
         string output = await _util.StartAndGetOutput(GetEchoCommand(), GetEchoArguments("whole output"), cancellationToken: cancellationToken);
 
@@ -167,14 +167,14 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task StartAndGetOutput_TimeoutKillsProcess()
+    public async ValueTask StartAndGetOutput_TimeoutKillsProcess()
     {
         await Assert.ThrowsAsync<TimeoutException>(() =>
             _util.StartAndGetOutput(GetSleepCommand(), GetSleepArguments(10), timeout: TimeSpan.FromMilliseconds(100)).AsTask());
     }
 
     [Test]
-    public async Task StreamLines_ReturnsStandardOutput(CancellationToken cancellationToken)
+    public async ValueTask StreamLines_ReturnsStandardOutput(CancellationToken cancellationToken)
     {
         var lines = new List<string>();
 
@@ -188,7 +188,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async Task StartDetached_CancellationTokenKillsProcess()
+    public async ValueTask StartDetached_CancellationTokenKillsProcess()
     {
         string command = GetSleepCommand();
         string arguments = GetSleepArguments(10);

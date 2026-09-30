@@ -11,7 +11,7 @@ namespace Soenneker.Utils.Process.Tests;
 public sealed class ProcessUtilDetachedTests
 {
     [Test]
-    public async Task Cancellation_kills_the_child_and_completes_an_uncancelled_exit_wait(CancellationToken cancellationToken)
+    public async ValueTask Cancellation_kills_the_child_and_completes_an_uncancelled_exit_wait(CancellationToken cancellationToken)
     {
         var util = new ProcessUtil(NullLogger<ProcessUtil>.Instance);
         using var cancellation = new CancellationTokenSource();
@@ -33,7 +33,7 @@ public sealed class ProcessUtilDetachedTests
     }
 
     [Test]
-    public async Task WaitForExit_drains_output_even_when_callbacks_are_slower_than_the_child(CancellationToken cancellationToken)
+    public async ValueTask WaitForExit_drains_output_even_when_callbacks_are_slower_than_the_child(CancellationToken cancellationToken)
     {
         var stdout = new ConcurrentQueue<string>();
         var stderr = new ConcurrentQueue<string>();
@@ -63,7 +63,7 @@ public sealed class ProcessUtilDetachedTests
     }
 
     [Test]
-    public async Task Immediate_exit_preserves_both_streams_and_nonzero_exit_code(CancellationToken cancellationToken)
+    public async ValueTask Immediate_exit_preserves_both_streams_and_nonzero_exit_code(CancellationToken cancellationToken)
     {
         var util = new ProcessUtil(NullLogger<ProcessUtil>.Instance);
         for (var iteration = 0; iteration < 10; iteration++)
