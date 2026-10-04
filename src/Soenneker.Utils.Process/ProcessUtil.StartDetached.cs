@@ -64,6 +64,8 @@ public sealed partial class ProcessUtil
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(dto);
         ArgumentException.ThrowIfNullOrWhiteSpace(dto.FileName);
+        if (dto.ArgumentList is { Count: > 0 } && !string.IsNullOrEmpty(dto.Arguments))
+            throw new ArgumentException("Specify ArgumentList or Arguments, not both.", nameof(dto));
 
         var psi = new ProcessStartInfo
         {
@@ -72,9 +74,16 @@ public sealed partial class ProcessUtil
             WorkingDirectory = dto.WorkingDirectory.HasContent() ? dto.WorkingDirectory! : Environment.CurrentDirectory,
             UseShellExecute = false,
             CreateNoWindow = dto.CreateNoWindow,
+            RedirectStandardInput = dto.RedirectStandardInput,
             RedirectStandardOutput = dto.RedirectStandardOutput || dto.OutputCallback is not null,
             RedirectStandardError = dto.RedirectStandardError || dto.ErrorCallback is not null
         };
+
+        if (dto.RedirectStandardInput)
+            psi.StandardInputEncoding = new System.Text.UTF8Encoding(false);
+        if (dto.ArgumentList is not null)
+            foreach (string argument in dto.ArgumentList)
+                psi.ArgumentList.Add(argument);
 
         if (psi.RedirectStandardOutput)
             psi.StandardOutputEncoding = System.Text.Encoding.UTF8;

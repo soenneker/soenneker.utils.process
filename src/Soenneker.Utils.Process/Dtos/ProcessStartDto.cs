@@ -18,6 +18,12 @@ public sealed class ProcessStartDto
     /// </summary>
     public string? Arguments { get; set; }
 
+    /// <summary>Individual arguments escaped by ProcessStartInfo. Cannot be combined with Arguments.</summary>
+    public IReadOnlyList<string>? ArgumentList { get; set; }
+
+    /// <summary>Redirects stdin so the caller can write to the returned process's StandardInput stream.</summary>
+    public bool RedirectStandardInput { get; set; }
+
     /// <summary>
     /// Gets or sets working directory.
     /// </summary>
