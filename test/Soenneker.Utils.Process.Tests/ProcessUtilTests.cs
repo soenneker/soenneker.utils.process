@@ -77,7 +77,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask Start_ProcessIsCanceledBeforeCompletion_ThrowsTaskCanceledException()
+    public async ValueTask Start_ProcessIsCanceledBeforeCompletion_ThrowsTaskCanceledException(CancellationToken cancellationToken)
     {
         string command = GetSleepCommand();
         string arguments = GetSleepArguments(10);
@@ -149,13 +149,13 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask StartAndWait_TimeoutKillsProcess()
+    public async ValueTask StartAndWait_TimeoutKillsProcess(CancellationToken cancellationToken)
     {
         string command = GetSleepCommand();
         string arguments = GetSleepArguments(10);
 
         await Assert.ThrowsAsync<TimeoutException>(() =>
-            _util.StartAndWait(command, arguments: arguments, timeout: TimeSpan.FromMilliseconds(100), log: false).AsTask());
+            _util.StartAndWait(command, arguments: arguments, timeout: TimeSpan.FromMilliseconds(100), log: false, cancellationToken: cancellationToken).AsTask());
     }
 
     [Test]
@@ -167,10 +167,10 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask StartAndGetOutput_TimeoutKillsProcess()
+    public async ValueTask StartAndGetOutput_TimeoutKillsProcess(CancellationToken cancellationToken)
     {
         await Assert.ThrowsAsync<TimeoutException>(() =>
-            _util.StartAndGetOutput(GetSleepCommand(), GetSleepArguments(10), timeout: TimeSpan.FromMilliseconds(100)).AsTask());
+            _util.StartAndGetOutput(GetSleepCommand(), GetSleepArguments(10), timeout: TimeSpan.FromMilliseconds(100), cancellationToken: cancellationToken).AsTask());
     }
 
     [Test]
@@ -188,7 +188,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask StartDetached_CancellationTokenKillsProcess()
+    public async ValueTask StartDetached_CancellationTokenKillsProcess(CancellationToken cancellationToken)
     {
         string command = GetSleepCommand();
         string arguments = GetSleepArguments(10);
@@ -206,7 +206,7 @@ public sealed class ProcessUtilTests : HostedUnitTest
 
         using (process)
         {
-            await process.WaitForExitAsync(System.Threading.CancellationToken.None);
+            await process.WaitForExitAsync(cancellationToken);
             process.HasExited.Should().BeTrue();
         }
     }
