@@ -50,6 +50,6 @@
 
     <ItemGroup>
 <PackageReference Include="Soenneker.Extensions.Task" Version="4.0.139" />
-<PackageReference Include="Soenneker.Utils.Runtime" Version="4.0.1145" />
+<PackageReference Include="Soenneker.Utils.Runtime" Version="4.0.1148" />
     </ItemGroup>
 </Project>
