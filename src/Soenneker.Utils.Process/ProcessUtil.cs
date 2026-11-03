@@ -1,8 +1,10 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Soenneker.Utils.Process.Abstract;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.Task;
@@ -11,7 +13,6 @@ using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Utils.Process;
 
-/// <inheritdoc cref="IProcessUtil" />
 public sealed partial class ProcessUtil : IProcessUtil
 {
     private readonly ILogger<ProcessUtil> _logger;
@@ -23,12 +24,6 @@ public sealed partial class ProcessUtil : IProcessUtil
         _logger = logger;
     }
 
-    /// <summary>
-    /// Executes the command exists operation.
-    /// </summary>
-    /// <param name="command">The command.</param>
-    /// <param name="ct">The ct.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<bool> CommandExists(string command, CancellationToken ct = default)
     {
         try
@@ -56,14 +51,6 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
-    /// <summary>
-    /// Executes the command exists and runs operation.
-    /// </summary>
-    /// <param name="command">The command.</param>
-    /// <param name="versionArgs">The version args.</param>
-    /// <param name="timeout">The timeout.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<bool> CommandExistsAndRuns(string command, string versionArgs = "--version", TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -90,18 +77,10 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
-    /// <summary>
-    /// Executes the start and get output operation.
-    /// </summary>
-    /// <param name="fileName">The file name.</param>
-    /// <param name="arguments">The arguments.</param>
-    /// <param name="workingDirectory">The working directory.</param>
-    /// <param name="timeout">The timeout.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> StartAndGetOutput(string fileName = "", string arguments = "", string workingDirectory = "", TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         _logger.LogInformation("🟢 Starting: {file} {args} (in {cwd})", fileName, arguments, workingDirectory);
 
         var psi = new ProcessStartInfo
@@ -133,9 +112,9 @@ public sealed partial class ProcessUtil : IProcessUtil
         {
         }
 
-        Task<string> stdOutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        Task<string> stdErrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        Task completion = WaitForExitAndDrain(process, stdOutTask, stdErrTask, cancellationToken);
+        using var readCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task<(byte[] StandardOutput, byte[] StandardError)> outputTask = process.ReadAllBytesAsync(readCancellation.Token);
+        Task completion = Task.WhenAll(process.WaitForExitAsync(readCancellation.Token), outputTask);
 
         try
         {
@@ -147,35 +126,35 @@ public sealed partial class ProcessUtil : IProcessUtil
         catch (TimeoutException)
         {
             TryKillProcessTree(process);
+            await readCancellation.CancelAsync().NoSync();
             await ObserveCompletion(completion).NoSync();
             throw new TimeoutException($"Process '{fileName}' did not exit within {timeout!.Value.TotalMilliseconds} ms.");
         }
         catch (OperationCanceledException)
         {
             TryKillProcessTree(process);
+            await ObserveCompletion(completion).NoSync();
+            cancellationToken.ThrowIfCancellationRequested();
             throw;
         }
 
+        (byte[] standardOutput, byte[] standardError) = await outputTask.NoSync();
+
         if (process.ExitCode != 0)
             throw new InvalidOperationException($"'{fileName} {arguments}' exited with {process.ExitCode}" +
-                                                (stdErrTask.Result.Length > 0 ? Environment.NewLine + stdErrTask.Result : string.Empty));
+                                                (standardError.Length > 0 ? Environment.NewLine + DecodeProcessOutput(standardError) : string.Empty));
 
-        return stdOutTask.Result;
+        return DecodeProcessOutput(standardOutput);
     }
 
-    /// <summary>
-    /// Executes the start if not running operation.
-    /// </summary>
-    /// <param name="name">The name.</param>
-    /// <param name="directory">The directory.</param>
-    /// <param name="arguments">The arguments.</param>
-    /// <param name="admin">The admin.</param>
-    /// <param name="waitForExit">The wait for exit.</param>
-    /// <param name="timeout">The timeout.</param>
-    /// <param name="log">The log.</param>
-    /// <param name="environmentalVars">The environmental vars.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
+    private static string DecodeProcessOutput(byte[] bytes)
+    {
+        // ReadAllTextAsync decodes with the configured encoding without detecting a BOM.
+        // Retain the previous StreamReader behavior for UTF-8/UTF-16/UTF-32 output.
+        using var reader = new StreamReader(new ReadOnlyMemoryStream(bytes), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
+    }
+
     public ValueTask<List<string>> StartIfNotRunning(string name, string? directory = null, string? arguments = null, bool admin = false,
         bool waitForExit = false, TimeSpan? timeout = null, bool log = true, Dictionary<string, string>? environmentalVars = null,
         CancellationToken cancellationToken = default)
@@ -185,13 +164,6 @@ public sealed partial class ProcessUtil : IProcessUtil
             : Start(name, directory, arguments, admin, waitForExit, timeout, log, environmentalVars, cancellationToken);
     }
 
-    /// <summary>
-    /// Executes the kill by names operation.
-    /// </summary>
-    /// <param name="processNames">The process names.</param>
-    /// <param name="waitForExit">The wait for exit.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask KillByNames(IEnumerable<string> processNames, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         foreach (string name in processNames)
@@ -201,13 +173,6 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
-    /// <summary>
-    /// Executes the kill operation.
-    /// </summary>
-    /// <param name="name">The name.</param>
-    /// <param name="waitForExit">The wait for exit.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
     public async Task Kill(string name, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         System.Diagnostics.Process[] processes = System.Diagnostics.Process.GetProcessesByName(name);
@@ -248,13 +213,6 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
-    /// <summary>
-    /// Executes the kill that start with operation.
-    /// </summary>
-    /// <param name="prefix">The prefix.</param>
-    /// <param name="waitForExit">The wait for exit.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask KillThatStartWith(string prefix, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         System.Diagnostics.Process[] total = System.Diagnostics.Process.GetProcesses();
@@ -287,13 +245,6 @@ public sealed partial class ProcessUtil : IProcessUtil
         }
     }
 
-    /// <summary>
-    /// Executes the kill operation.
-    /// </summary>
-    /// <param name="process">The process.</param>
-    /// <param name="waitForExit">The wait for exit.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
     public Task Kill(System.Diagnostics.Process process, bool waitForExit = false, CancellationToken cancellationToken = default)
     {
         try
@@ -313,11 +264,6 @@ public sealed partial class ProcessUtil : IProcessUtil
         return waitForExit ? process.WaitForExitAsync(cancellationToken) : Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Executes the is running operation.
-    /// </summary>
-    /// <param name="name">The name.</param>
-    /// <returns>A value indicating whether the operation succeeded.</returns>
     public bool IsRunning(string name)
     {
         System.Diagnostics.Process[] processes = System.Diagnostics.Process.GetProcessesByName(name);
@@ -335,14 +281,6 @@ public sealed partial class ProcessUtil : IProcessUtil
         return running;
     }
 
-    /// <summary>
-    /// Executes the bash run operation.
-    /// </summary>
-    /// <param name="command">The command.</param>
-    /// <param name="workingDir">The working dir.</param>
-    /// <param name="environmentalVars">The environmental vars.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask BashRun(string command, string workingDir, Dictionary<string, string>? environmentalVars = null,
         CancellationToken cancellationToken = default)
     {
@@ -366,90 +304,33 @@ public sealed partial class ProcessUtil : IProcessUtil
                 startInfo.Environment[k] = v;
         }
 
-        using var proc = new System.Diagnostics.Process();
-        proc.StartInfo = startInfo;
-        proc.EnableRaisingEvents = true;
-
-        // complete when e.Data == null
-        var stdoutDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var stderrDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        DataReceivedEventHandler outHandler = (_, e) =>
-        {
-            if (e.Data is null)
-            {
-                stdoutDone.TrySetResult();
-                return;
-            }
-
-            LogStandardOutput(_logger, e.Data);
-        };
-
-        DataReceivedEventHandler errHandler = (_, e) =>
-        {
-            if (e.Data is null)
-            {
-                stderrDone.TrySetResult();
-                return;
-            }
-
-            LogStandardError(_logger, e.Data);
-        };
-
-        proc.OutputDataReceived += outHandler;
-        proc.ErrorDataReceived += errHandler;
+        cancellationToken.ThrowIfCancellationRequested();
+        using var proc = new System.Diagnostics.Process { StartInfo = startInfo };
 
         try
         {
             if (!proc.Start())
                 throw new InvalidOperationException("Failed to start bash process.");
 
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
+            await foreach (ProcessOutputLine line in proc.ReadAllLinesAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (line.StandardError)
+                    LogStandardError(_logger, line.Content);
+                else
+                    LogStandardOutput(_logger, line.Content);
+            }
 
-            // wait for: exit + both streams drained
-            Task allDone = Task.WhenAll(proc.WaitForExitAsync(cancellationToken), stdoutDone.Task, stderrDone.Task);
-
-            await allDone.NoSync();
+            await proc.WaitForExitAsync(cancellationToken).NoSync();
 
             if (proc.ExitCode != 0)
                 throw new InvalidOperationException($"Run failed with exit code {proc.ExitCode} for command: {command}");
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            TryKillProcessTree(proc);
-            throw;
-        }
         finally
         {
-            proc.OutputDataReceived -= outHandler;
-            proc.ErrorDataReceived -= errHandler;
-            try
-            {
-                proc.CancelOutputRead();
-            }
-            catch (InvalidOperationException)
-            {
-            }
-
-            try
-            {
-                proc.CancelErrorRead();
-            }
-            catch (InvalidOperationException)
-            {
-            }
+            TryKillProcessTree(proc);
         }
     }
 
-    /// <summary>
-    /// Executes the cmd run operation.
-    /// </summary>
-    /// <param name="command">The command.</param>
-    /// <param name="workingDirectory">The working directory.</param>
-    /// <param name="environmentalVars">The environmental vars.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask CmdRun(string command, string workingDirectory, Dictionary<string, string>? environmentalVars = null,
         CancellationToken cancellationToken = default)
     {
@@ -474,78 +355,30 @@ public sealed partial class ProcessUtil : IProcessUtil
                 startInfo.Environment[k] = v;
         }
 
-        using var proc = new System.Diagnostics.Process();
-        proc.StartInfo = startInfo;
-        proc.EnableRaisingEvents = true;
-
-        var stdoutDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var stderrDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        DataReceivedEventHandler outHandler = (_, e) =>
-        {
-            if (e.Data is null)
-            {
-                stdoutDone.TrySetResult();
-                return;
-            }
-
-            LogInformationLine(_logger, e.Data);
-        };
-
-        DataReceivedEventHandler errHandler = (_, e) =>
-        {
-            if (e.Data is null)
-            {
-                stderrDone.TrySetResult();
-                return;
-            }
-
-            LogErrorLine(_logger, e.Data);
-        };
-
-        proc.OutputDataReceived += outHandler;
-        proc.ErrorDataReceived += errHandler;
+        cancellationToken.ThrowIfCancellationRequested();
+        using var proc = new System.Diagnostics.Process { StartInfo = startInfo };
 
         try
         {
             if (!proc.Start())
                 throw new InvalidOperationException("Failed to start cmd.exe");
 
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
+            await foreach (ProcessOutputLine line in proc.ReadAllLinesAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (line.StandardError)
+                    LogErrorLine(_logger, line.Content);
+                else
+                    LogInformationLine(_logger, line.Content);
+            }
 
-            // wait for: exit + both streams drained
-            Task allDone = Task.WhenAll(proc.WaitForExitAsync(cancellationToken), stdoutDone.Task, stderrDone.Task);
-
-            await allDone.NoSync();
+            await proc.WaitForExitAsync(cancellationToken).NoSync();
 
             if (proc.ExitCode != 0)
                 throw new InvalidOperationException($"CMD '{command}' exited with code {proc.ExitCode}.");
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            TryKillProcessTree(proc);
-            throw;
-        }
         finally
         {
-            proc.OutputDataReceived -= outHandler;
-            proc.ErrorDataReceived -= errHandler;
-            try
-            {
-                proc.CancelOutputRead();
-            }
-            catch (InvalidOperationException)
-            {
-            }
-
-            try
-            {
-                proc.CancelErrorRead();
-            }
-            catch (InvalidOperationException)
-            {
-            }
+            TryKillProcessTree(proc);
         }
     }
 

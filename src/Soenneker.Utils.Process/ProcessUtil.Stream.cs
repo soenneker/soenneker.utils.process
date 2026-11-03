@@ -1,30 +1,23 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Soenneker.Extensions.Task;
-using Soenneker.Extensions.ValueTask;
 
 namespace Soenneker.Utils.Process;
 
-/// <summary>
-/// Represents the process util.
-/// </summary>
 public sealed partial class ProcessUtil
 {
-    /// <summary>
-    /// Runs <paramref name="fileName"/> and produces every line it writes.  When both stdout *and* stderr are redirected
-    /// they are merged in‑order of arrival so the caller sees the exact chronological sequence.
-    /// </summary>
     public async IAsyncEnumerable<string> StreamLines(string fileName, string? workingDirectory = null, string? arguments = null,
         bool redirectOutput = true, bool redirectError = true, IDictionary<string, string>? environmentVariables = null, ILogger? logger = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
@@ -55,99 +48,52 @@ public sealed partial class ProcessUtil
         using CancellationTokenRegistration killRegistration = cancellationToken.Register(static p =>
             TryKillProcessTree((System.Diagnostics.Process)p!), process);
 
-        var channel = Channel.CreateUnbounded<string>(new UnboundedChannelOptions
-        {
-            SingleReader = true,
-            AllowSynchronousContinuations = false
-        });
-
-        Task stdoutTask = Task.CompletedTask, stderrTask = Task.CompletedTask;
-
-        if (redirectOutput)
-            stdoutTask = PumpAsync(process.StandardOutput, channel.Writer, logger, isError: false, cancellationToken);
-
-        if (redirectError)
-            stderrTask = PumpAsync(process.StandardError, channel.Writer, logger, isError: true, cancellationToken);
-
-        Task closeWriterTask = CompleteWriter(stdoutTask, stderrTask, channel.Writer);
-
         try
         {
-            // Forward lines downstream.
-            while (await channel.Reader.WaitToReadAsync(cancellationToken).NoSync())
+            await foreach (ProcessOutputLine line in ReadProcessLines(process, redirectOutput, redirectError, cancellationToken).ConfigureAwait(false))
             {
-                while (channel.Reader.TryRead(out string? line))
-                    yield return line;
-            }
-        }
-        finally
-        {
-            // If the enumerator is disposed early (caller stops enumerating), ensure the process doesn't keep running.
-            TryKillProcessTree(process);
-        }
-
-        await process.WaitForExitAsync(cancellationToken).NoSync();
-        await closeWriterTask.NoSync();
-
-        if (process.ExitCode != 0 && !cancellationToken.IsCancellationRequested)
-            throw new InvalidOperationException($"Process \"{fileName}\" exited with code {process.ExitCode}.");
-    }
-
-    /// <summary>
-    /// Continuously reads <paramref name="reader"/> and forwards each line to <paramref name="writer"/>.
-    /// </summary>
-    private static async Task PumpAsync(StreamReader reader, ChannelWriter<string> writer, ILogger? logger, bool isError, CancellationToken cancellationToken)
-    {
-        try
-        {
-            while (true)
-            {
-                // ReadLineAsync with token is .NET 8; earlier versions can use WaitAsync.
-                string? line = await reader.ReadLineAsync(cancellationToken).NoSync();
-                if (line is null)
-                    break;
-
-                // Avoid allocating when stdout: payload is the original line instance.
-                string payload = isError ? string.Concat("[stderr] ", line) : line;
+                string payload = line.StandardError ? string.Concat("[stderr] ", line.Content) : line.Content;
                 if (logger is not null)
                 {
-                    if (isError)
+                    if (line.StandardError)
                         LogWarningLine(logger, payload);
                     else
                         LogInformationLine(logger, payload);
                 }
 
-                writer.TryWrite(payload);
+                yield return payload;
             }
+
+            // Closing the output pipes does not mean the process has exited.
+            await process.WaitForExitAsync(cancellationToken).NoSync();
+
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"Process \"{fileName}\" exited with code {process.ExitCode}.");
         }
-        catch (OperationCanceledException)
+        finally
         {
-            // Cancellation is handled by the outer method.
+            // Also runs when the consumer stops enumerating before the process exits.
+            TryKillProcessTree(process);
         }
     }
 
-    private static async Task CompleteWriter(Task stdoutTask, Task stderrTask, ChannelWriter<string> writer)
+    private static IAsyncEnumerable<ProcessOutputLine> ReadProcessLines(System.Diagnostics.Process process, bool redirectOutput,
+        bool redirectError, CancellationToken cancellationToken)
     {
-        Exception? error = null;
+        // The .NET multiplexing API requires both streams to be redirected.
+        return redirectOutput && redirectError
+            ? process.ReadAllLinesAsync(cancellationToken)
+            : ReadSingleProcessStream(process, redirectOutput, redirectError, cancellationToken);
+    }
 
-        try
-        {
-            await stdoutTask.NoSync();
-        }
-        catch (Exception ex)
-        {
-            error = ex;
-        }
+    private static async IAsyncEnumerable<ProcessOutputLine> ReadSingleProcessStream(System.Diagnostics.Process process, bool redirectOutput,
+        bool redirectError, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        if (!redirectOutput && !redirectError)
+            yield break;
 
-        try
-        {
-            await stderrTask.NoSync();
-        }
-        catch (Exception ex)
-        {
-            error ??= ex;
-        }
-
-        writer.TryComplete(error);
+        StreamReader reader = redirectOutput ? process.StandardOutput : process.StandardError;
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line)
+            yield return new ProcessOutputLine(line, standardError: redirectError);
     }
 }

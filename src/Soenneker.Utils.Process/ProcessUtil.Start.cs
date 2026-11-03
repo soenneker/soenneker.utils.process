@@ -64,9 +64,7 @@ public sealed partial class ProcessUtil
 
             if (captureOutput)
             {
-                Task stdoutTask = CaptureLines(process.StandardOutput, lines!, _logger, isError: false, log, cancellationToken);
-                Task stderrTask = CaptureLines(process.StandardError, lines!, _logger, isError: true, log, cancellationToken);
-                completion = WaitForExitAndDrain(process, stdoutTask, stderrTask, cancellationToken);
+                completion = CaptureLinesAndWait(process, lines!, _logger, log, cancellationToken);
             }
             else
             {
@@ -96,14 +94,17 @@ public sealed partial class ProcessUtil
 
             throw new TimeoutException($"Process '{fileName}' did not exit within {timeout!.Value.TotalMilliseconds} ms.");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
             TryKillProcessTree(process);
+
+            if (completion is not null)
+                await ObserveCompletion(completion).NoSync();
 
             if (log && _logger.IsEnabled(LogLevel.Warning))
                 _logger.LogWarning("Process '{Name}' was canceled.", fileName);
 
-            throw;
+            throw new TaskCanceledException(ex.Message, ex, cancellationToken);
         }
         catch (Exception ex)
         {
@@ -197,30 +198,23 @@ public sealed partial class ProcessUtil
         }
     }
 
-    private static async Task CaptureLines(StreamReader reader, List<string> lines, ILogger logger, bool isError, bool log,
+    private static async Task CaptureLinesAndWait(System.Diagnostics.Process process, List<string> lines, ILogger logger, bool log,
         CancellationToken cancellationToken)
     {
-        while (true)
+        await foreach (ProcessOutputLine line in process.ReadAllLinesAsync(cancellationToken).ConfigureAwait(false))
         {
-            string? line = await reader.ReadLineAsync(cancellationToken).NoSync();
-            if (line is null)
-                return;
-
-            string value = isError ? string.Concat("ERROR: ", line) : line;
-
-            lock (lines)
-            {
-                lines.Add(value);
-            }
+            lines.Add(line.StandardError ? string.Concat("ERROR: ", line.Content) : line.Content);
 
             if (log)
             {
-                if (isError)
-                    LogErrorData(logger, line);
+                if (line.StandardError)
+                    LogErrorData(logger, line.Content);
                 else
-                    LogInformationData(logger, line);
+                    LogInformationData(logger, line.Content);
             }
         }
+
+        await process.WaitForExitAsync(cancellationToken).NoSync();
     }
 
     private static async Task WaitForExitAndDrain(System.Diagnostics.Process process, Task stdoutTask, Task stderrTask,
