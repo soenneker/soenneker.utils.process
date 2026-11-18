@@ -179,7 +179,8 @@ public sealed partial class ProcessUtil : IProcessUtil
 
         if (processes.Length == 0)
         {
-            _logger.LogDebug("No processes found with name '{Name}'", name);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug("No processes found with name '{Name}'", name);
             return;
         }
 
@@ -237,11 +238,13 @@ public sealed partial class ProcessUtil : IProcessUtil
 
         if (killed == 0)
         {
-            _logger.LogDebug("No processes found starting with '{Prefix}'", prefix);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug("No processes found starting with '{Prefix}'", prefix);
         }
         else
         {
-            _logger.LogDebug("Killed {Count} process(es) starting with '{Prefix}'", killed, prefix);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug("Killed {Count} process(es) starting with '{Prefix}'", killed, prefix);
         }
     }
 
